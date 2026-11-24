@@ -1,0 +1,2599 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>死神與棺材的瑪利歐大冒險</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@500;700;900&family=Press+Start+2P&display=swap" rel="stylesheet" />
+  <style>
+    * {
+      box-sizing: border-box;
+      user-select: none;
+      -webkit-user-select: none;
+      -webkit-touch-callout: none;
+    }
+    body {
+      margin: 0;
+      padding: 0;
+      background-color: #090b12;
+      color: #f8fafc;
+      font-family: 'Noto Sans TC', sans-serif;
+      overflow: hidden;
+      touch-action: none;
+    }
+    .font-pixel {
+      font-family: 'Press Start 2P', 'Noto Sans TC', monospace;
+    }
+    /* 遊戲畫布容器 */
+    #game-stage {
+      position: relative;
+      width: 100vw;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      background: radial-gradient(circle at center, #141928 0%, #07090f 100%);
+    }
+    #canvas-wrapper {
+      position: relative;
+      width: 100%;
+      max-width: 1200px;
+      aspect-ratio: 16 / 9;
+      max-height: calc(100vh - 84px);
+      border-radius: 14px;
+      overflow: hidden;
+      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.85), 0 0 0 3px rgba(255, 255, 255, 0.12);
+      background: #000;
+    }
+    canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+      image-rendering: pixelated;
+    }
+
+    /* 死神紅色恐怖暗角動畫 */
+    @keyframes reaperPulse {
+      0%, 100% { box-shadow: inset 0 0 70px 25px rgba(220, 20, 40, 0.68); }
+      50% { box-shadow: inset 0 0 120px 45px rgba(255, 0, 30, 0.92); }
+    }
+    .reaper-vignette {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      z-index: 20;
+      animation: reaperPulse 0.8s infinite ease-in-out;
+    }
+
+    @keyframes warnFlash {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.72; transform: scale(1.03); }
+    }
+    .animate-warn {
+      animation: warnFlash 0.45s infinite ease-in-out;
+    }
+
+    /* 復古立體按鈕 */
+    .btn-retro {
+      transition: transform 0.08s ease, box-shadow 0.08s ease, filter 0.15s ease;
+      box-shadow: 0 5px 0 rgba(0, 0, 0, 0.45), inset 0 2px 0 rgba(255, 255, 255, 0.25);
+    }
+    .btn-retro:hover {
+      filter: brightness(1.1);
+    }
+    .btn-retro:active {
+      transform: translateY(3px);
+      box-shadow: 0 2px 0 rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.2);
+    }
+
+    /* 行動裝置觸控按鈕 */
+    .touch-btn {
+      background: rgba(15, 23, 42, 0.68);
+      border: 2px solid rgba(255, 255, 255, 0.3);
+      backdrop-filter: blur(4px);
+      box-shadow: 0 4px 14px rgba(0, 0, 0, 0.5);
+      transition: transform 0.06s, background 0.06s;
+    }
+    .touch-btn.active, .touch-btn:active {
+      background: rgba(239, 68, 68, 0.75);
+      transform: scale(0.93);
+      border-color: rgba(255, 255, 255, 0.75);
+    }
+
+    /* 自訂捲軸（給標題規則卡片用） */
+    .custom-scroll::-webkit-scrollbar {
+      width: 6px;
+    }
+    .custom-scroll::-webkit-scrollbar-thumb {
+      background: rgba(255, 255, 255, 0.25);
+      border-radius: 99px;
+    }
+  </style>
+</head>
+<body>
+  <div id="game-stage" class="p-2 sm:p-3">
+    <!-- 頂部 HUD 資訊列 -->
+    <header id="hud-bar" class="w-full max-w-[1200px] mb-2 px-3 py-2 rounded-xl bg-slate-900/90 border border-slate-700/80 shadow-lg flex flex-wrap items-center justify-between gap-2 text-xs sm:text-sm">
+      <div class="flex items-center gap-2 sm:gap-4">
+        <span id="hud-level" class="font-bold text-amber-400 bg-amber-950/60 px-2.5 py-1 rounded-lg border border-amber-500/40">
+          第一關：陽光草原
+        </span>
+        <div class="flex items-center gap-1.5 text-slate-200 font-bold">
+          <span>⏱️</span>
+          <span id="hud-time" class="font-pixel text-xs sm:text-sm text-sky-300">00:00</span>
+        </div>
+        <div class="flex items-center gap-1 text-yellow-400 font-bold">
+          <span>🪙</span>
+          <span id="hud-coins" class="font-pixel text-xs sm:text-sm">0</span>
+        </div>
+        <div id="hud-power" class="hidden sm:flex items-center gap-1 px-2 py-0.5 rounded-md bg-slate-800 border border-slate-600 text-xs font-bold text-emerald-300">
+          狀態：普通
+        </div>
+      </div>
+
+      <!-- 關卡進度條 -->
+      <div class="flex items-center gap-2 flex-1 max-w-[240px] min-w-[120px]">
+        <span class="text-[11px] text-slate-400 whitespace-nowrap">進度</span>
+        <div class="w-full h-3 bg-slate-800 rounded-full overflow-hidden border border-slate-600 relative">
+          <div id="hud-progress-fill" class="h-full bg-gradient-to-r from-emerald-500 to-lime-400 transition-all duration-150" style="width: 0%"></div>
+        </div>
+        <span id="hud-progress-text" class="font-pixel text-[10px] text-emerald-300 w-9 text-right">0%</span>
+      </div>
+
+      <!-- 特殊生存狀態指示器與控制鈕 -->
+      <div class="flex items-center gap-2">
+        <!-- 原地停留狀態 -->
+        <div id="hud-idle-box" class="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-800/90 border border-slate-600 text-xs">
+          <span>⚰️</span>
+          <span id="hud-idle-text" class="font-bold text-slate-300">安全</span>
+        </div>
+        <!-- 死神狀態 -->
+        <div id="hud-reaper-box" class="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-800/90 border border-slate-600 text-xs">
+          <span>💀</span>
+          <span id="hud-reaper-text" class="font-bold text-slate-300">潛伏中</span>
+        </div>
+        <!-- 音效與暫停 -->
+        <button id="btn-mute" title="開關音效" class="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-600 text-sm cursor-pointer">
+          🔊
+        </button>
+        <button id="btn-pause" title="暫停 (P / Esc)" class="px-2.5 py-1 rounded-lg bg-indigo-600 hover:bg-indigo-500 border border-indigo-400/50 font-bold text-xs sm:text-sm cursor-pointer">
+          暫停
+        </button>
+      </div>
+    </header>
+
+    <!-- 遊戲主畫布與覆蓋層 -->
+    <div id="canvas-wrapper">
+      <canvas id="game-canvas"></canvas>
+
+      <!-- 原地停留超過 5 秒警告條 -->
+      <div id="idle-warning-overlay" class="hidden absolute top-3 left-1/2 -translate-x-1/2 z-30 w-[86%] max-w-[440px] bg-stone-950/90 border-2 border-amber-500 rounded-xl px-4 py-2 shadow-2xl pointer-events-none">
+        <div class="flex items-center justify-between text-xs sm:text-sm font-black text-amber-300 mb-1">
+          <span>⚰️ 原地停留警告！快移動！</span>
+          <span id="idle-countdown-num" class="font-pixel text-red-400">25.0s</span>
+        </div>
+        <div class="w-full h-3 bg-stone-800 rounded-full overflow-hidden border border-amber-700">
+          <div id="idle-bar-fill" class="h-full bg-gradient-to-r from-amber-500 via-orange-500 to-red-600 transition-all duration-75" style="width: 20%"></div>
+        </div>
+      </div>
+
+      <!-- 死神 2.5 秒預警橫幅 -->
+      <div id="reaper-warning-banner" class="hidden absolute top-16 left-1/2 -translate-x-1/2 z-30 w-[92%] max-w-[620px] bg-red-950/95 border-2 border-red-500 rounded-xl px-4 py-3 text-center shadow-[0_0_30px_rgba(220,38,38,0.8)] pointer-events-none animate-warn">
+        <div class="text-base sm:text-xl font-black text-red-200 tracking-wide">
+          ⚠ 死神即將降臨！切勿回頭、切勿跳躍！
+        </div>
+        <div class="text-xs text-red-300 mt-0.5">請保持面向右方或停在安全平地，準備迎接 10 秒倒數！</div>
+      </div>
+
+      <!-- 死神追擊中 10 秒暗角與倒數 -->
+      <div id="reaper-active-vignette" class="hidden reaper-vignette"></div>
+      <div id="reaper-active-hud" class="hidden absolute top-3 left-1/2 -translate-x-1/2 z-30 bg-black/85 border-2 border-red-600 rounded-xl px-5 py-2.5 text-center shadow-[0_0_25px_rgba(255,0,40,0.85)] pointer-events-none">
+        <div class="text-sm sm:text-lg font-black text-red-400 tracking-wide">
+          💀 死神在背後！禁止回頭！禁止跳躍！
+        </div>
+        <div class="flex items-center justify-center gap-2 mt-1">
+          <span class="text-xs text-red-200">剩餘撐過時間：</span>
+          <span id="reaper-timer-num" class="font-pixel text-lg sm:text-2xl text-white">10.0</span>
+          <span class="text-xs text-red-200">秒</span>
+        </div>
+      </div>
+
+      <!-- 魔王血量條 -->
+      <div id="boss-hud" class="hidden absolute bottom-3 left-1/2 -translate-x-1/2 z-25 w-[88%] max-w-[540px] bg-slate-950/90 border-2 border-rose-600 rounded-xl px-4 py-2 shadow-2xl pointer-events-none">
+        <div class="flex items-center justify-between text-xs sm:text-sm font-black mb-1">
+          <span class="text-rose-400">🔥 煉獄魔龍王・庫巴拉</span>
+          <span id="boss-phase-text" class="text-amber-300">第一階段 (18/18)</span>
+        </div>
+        <div class="w-full h-3.5 bg-slate-800 rounded-full overflow-hidden border border-rose-900">
+          <div id="boss-hp-fill" class="h-full bg-gradient-to-r from-red-700 via-rose-500 to-amber-400 transition-all duration-200" style="width: 100%"></div>
+        </div>
+        <div class="text-[11px] text-slate-300 mt-1 text-center">
+          💡 頂撞發光的「⚡機關方塊」落雷重擊，或等魔王頭頂閃光暈眩時踩踏牠！
+        </div>
+      </div>
+
+      <!-- 存檔點提示吐司 -->
+      <div id="toast-msg" class="hidden absolute top-1/4 left-1/2 -translate-x-1/2 z-30 bg-emerald-900/90 border-2 border-emerald-400 text-emerald-100 font-black px-5 py-2 rounded-full shadow-2xl text-sm sm:text-base pointer-events-none">
+        🚩 已抵達存檔點！
+      </div>
+
+      <!-- ==================== 標題畫面 ==================== -->
+      <div id="title-screen" class="absolute inset-0 z-40 bg-gradient-to-b from-slate-950/95 via-indigo-950/95 to-slate-950/95 flex flex-col items-center justify-center p-4 sm:p-6 overflow-y-auto custom-scroll">
+        <div class="max-w-3xl w-full flex flex-col items-center text-center">
+          <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-red-950/80 border border-red-500/50 text-red-300 text-xs font-bold mb-2">
+            <span>🍄 經典橫向捲軸 × 💀 恐怖生存規則</span>
+          </div>
+          <h1 class="text-2xl sm:text-4xl md:text-5xl font-black tracking-tight text-transparent bg-clip-text bg-gradient-to-r from-amber-300 via-red-400 to-rose-500 drop-shadow-lg mb-2">
+            死神與棺材的瑪利歐大冒險
+          </h1>
+          <p class="text-xs sm:text-sm text-slate-300 mb-4 max-w-xl">
+            超長距離硬派跑酷關卡！在躲避怪物、深坑與煉獄魔王的同時，千萬別觸犯兩大奪命禁忌！
+          </p>
+
+          <!-- 規則卡片 -->
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-3 w-full mb-5 text-left">
+            <div class="bg-slate-900/90 border border-amber-500/50 rounded-xl p-3.5 shadow-lg">
+              <div class="flex items-center gap-2 text-amber-400 font-black text-sm sm:text-base mb-1">
+                <span>⚰️</span>
+                <span>禁忌一：原地停留 30 秒天降棺材</span>
+              </div>
+              <p class="text-xs text-slate-300 leading-relaxed">
+                水平移動範圍小於 25px 即視為原地停留。滿 5 秒開始倒數警告，最後 5 秒地面震動並出現陰影，滿 <strong class="text-amber-300">30 秒</strong> 會被天降巨大木頭棺材直接砸扁！只要移動即可重置計時。
+              </p>
+            </div>
+            <div class="bg-slate-900/90 border border-red-500/60 rounded-xl p-3.5 shadow-lg">
+              <div class="flex items-center gap-2 text-red-400 font-black text-sm sm:text-base mb-1">
+                <span>💀</span>
+                <span>禁忌二：每 45～60 秒死神背後追擊</span>
+              </div>
+              <p class="text-xs text-slate-300 leading-relaxed">
+                每 45～60 秒預警 2.5 秒後，死神會在你身後緊跟 <strong class="text-red-300">10 秒</strong>！期間<strong class="text-red-300">絕對禁止回頭（按左鍵）</strong>且<strong class="text-red-300">絕對禁止跳躍</strong>，違者立刻被鐮刀收割靈魂！
+              </p>
+            </div>
+          </div>
+
+          <!-- 關卡選擇按鈕 -->
+          <div class="flex flex-col sm:flex-row gap-3 w-full max-w-xl mb-4">
+            <button id="btn-start-l1" class="btn-retro flex-1 py-3.5 px-5 rounded-xl bg-gradient-to-b from-emerald-500 to-emerald-700 text-white font-black text-sm sm:text-base cursor-pointer border border-emerald-300/40">
+              🌿 開始遊戲（第一關：陽光草原）
+              <div class="text-[11px] font-medium text-emerald-100 mt-0.5">超長冒險・約 3 分鐘通關・4 個存檔點</div>
+            </button>
+            <button id="btn-start-l2" class="btn-retro flex-1 py-3.5 px-5 rounded-xl bg-gradient-to-b from-rose-600 to-red-800 text-white font-black text-sm sm:text-base cursor-pointer border border-rose-300/40">
+              🔥 直接挑戰第二關（煉獄魔王城）
+              <div class="text-[11px] font-medium text-rose-100 mt-0.5">含三階段魔王戰・至少 5 分鐘・5 個存檔點</div>
+            </button>
+          </div>
+
+          <!-- 操作說明 -->
+          <div class="flex flex-wrap items-center justify-center gap-x-4 gap-y-1 text-[11px] sm:text-xs text-slate-400 bg-slate-900/70 px-4 py-2 rounded-lg border border-slate-700/70">
+            <span>⬅️➡️ / <kbd class="px-1.5 py-0.5 bg-slate-800 rounded text-slate-200">A D</kbd> 移動</span>
+            <span>⬆️ / <kbd class="px-1.5 py-0.5 bg-slate-800 rounded text-slate-200">W</kbd> / <kbd class="px-1.5 py-0.5 bg-slate-800 rounded text-slate-200">Space</kbd> 跳躍</span>
+            <span><kbd class="px-1.5 py-0.5 bg-slate-800 rounded text-slate-200">P</kbd> / <kbd class="px-1.5 py-0.5 bg-slate-800 rounded text-slate-200">Esc</kbd> 暫停</span>
+            <span>📱 支援觸控操作</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- ==================== 暫停選單 ==================== -->
+      <div id="pause-modal" class="hidden absolute inset-0 z-40 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
+        <div class="bg-slate-900 border-2 border-indigo-500/60 rounded-2xl p-6 max-w-sm w-full text-center shadow-2xl">
+          <h2 class="text-2xl font-black text-indigo-300 mb-4">⏸️ 遊戲暫停</h2>
+          <div class="flex flex-col gap-3">
+            <button id="btn-resume" class="btn-retro py-3 rounded-xl bg-emerald-600 text-white font-black cursor-pointer">繼續遊戲</button>
+            <button id="btn-pause-cp" class="btn-retro py-3 rounded-xl bg-amber-600 text-white font-black cursor-pointer">從上個存檔點復活</button>
+            <button id="btn-pause-restart" class="btn-retro py-3 rounded-xl bg-rose-700 text-white font-black cursor-pointer">重新開始本關</button>
+            <button id="btn-pause-title" class="btn-retro py-3 rounded-xl bg-slate-700 text-slate-200 font-bold cursor-pointer">返回標題畫面</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- ==================== 死亡畫面 ==================== -->
+      <div id="death-modal" class="hidden absolute inset-0 z-40 bg-black/82 backdrop-blur-sm flex items-center justify-center p-4">
+        <div class="bg-slate-900 border-2 border-red-600 rounded-2xl p-6 max-w-md w-full text-center shadow-[0_0_50px_rgba(220,38,38,0.45)]">
+          <div id="death-icon" class="text-5xl mb-2">💀</div>
+          <h2 class="text-2xl font-black text-red-400 mb-2">挑戰失敗！</h2>
+          <p id="death-reason" class="text-sm sm:text-base font-bold text-white bg-red-950/70 border border-red-500/40 rounded-xl p-3 mb-4">
+            你死掉了！
+          </p>
+          <div class="text-xs text-slate-400 mb-5 flex justify-center gap-4">
+            <span>目前進度：<strong id="death-progress" class="text-emerald-300">0%</strong></span>
+            <span>累計時間：<strong id="death-time" class="text-sky-300">00:00</strong></span>
+          </div>
+          <div class="flex flex-col sm:flex-row gap-3">
+            <button id="btn-respawn-cp" class="btn-retro flex-1 py-3 px-4 rounded-xl bg-emerald-600 text-white font-black cursor-pointer">
+              🚩 從上個存檔點復活
+            </button>
+            <button id="btn-restart-level" class="btn-retro flex-1 py-3 px-4 rounded-xl bg-slate-700 text-slate-200 font-bold cursor-pointer">
+              🔄 重新開始本關
+            </button>
+          </div>
+          <button id="btn-death-title" class="mt-3 text-xs text-slate-400 hover:text-white underline cursor-pointer">
+            返回標題畫面
+          </button>
+        </div>
+      </div>
+
+      <!-- ==================== 通關結算畫面 ==================== -->
+      <div id="victory-modal" class="hidden absolute inset-0 z-40 bg-slate-950/88 backdrop-blur-md flex items-center justify-center p-4">
+        <div class="bg-slate-900 border-2 border-amber-400 rounded-2xl p-6 max-w-md w-full text-center shadow-[0_0_50px_rgba(251,191,36,0.35)]">
+          <div class="text-5xl mb-2">🏆</div>
+          <h2 id="victory-title" class="text-2xl sm:text-3xl font-black text-amber-300 mb-2">關卡突破！</h2>
+          <p id="victory-desc" class="text-sm text-slate-300 mb-4">恭喜你在棺材與死神的威脅下成功生還！</p>
+          <div class="grid grid-cols-3 gap-2 bg-slate-950/80 rounded-xl p-3 mb-5 border border-slate-700">
+            <div>
+              <div class="text-[11px] text-slate-400">通關時間</div>
+              <div id="vic-time" class="font-pixel text-xs sm:text-sm text-sky-300 mt-1">00:00</div>
+            </div>
+            <div>
+              <div class="text-[11px] text-slate-400">收集金幣</div>
+              <div id="vic-coins" class="font-pixel text-xs sm:text-sm text-yellow-400 mt-1">0</div>
+            </div>
+            <div>
+              <div class="text-[11px] text-slate-400">死亡次數</div>
+              <div id="vic-deaths" class="font-pixel text-xs sm:text-sm text-rose-400 mt-1">0</div>
+            </div>
+          </div>
+          <div class="flex flex-col gap-3">
+            <button id="btn-next-level" class="btn-retro py-3.5 rounded-xl bg-gradient-to-r from-rose-600 to-amber-600 text-white font-black cursor-pointer">
+              🔥 前往第二關：煉獄魔王城
+            </button>
+            <button id="btn-vic-title" class="btn-retro py-3 rounded-xl bg-slate-700 text-slate-200 font-bold cursor-pointer">
+              返回標題畫面
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- 行動裝置觸控控制器（窄螢幕或觸控裝置顯示） -->
+      <div id="touch-controls" class="hidden absolute bottom-3 inset-x-3 z-35 flex items-end justify-between pointer-events-none">
+        <div class="flex gap-3 pointer-events-auto">
+          <button id="touch-left" class="touch-btn w-14 h-14 sm:w-16 sm:h-16 rounded-2xl text-2xl font-black text-white flex items-center justify-center">◀</button>
+          <button id="touch-right" class="touch-btn w-14 h-14 sm:w-16 sm:h-16 rounded-2xl text-2xl font-black text-white flex items-center justify-center">▶</button>
+        </div>
+        <div class="pointer-events-auto">
+          <button id="touch-jump" class="touch-btn w-16 h-16 sm:w-20 sm:h-20 rounded-full text-xl font-black text-amber-300 flex items-center justify-center">跳躍</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    /* =========================================================================
+       1. Web Audio API 復古 8-bit 音效引擎（無外部音檔依賴）
+       ========================================================================= */
+    class SoundEngine {
+      constructor() {
+        this.ctx = null;
+        this.muted = false;
+      }
+      init() {
+        if (!this.ctx) {
+          const AudioCtx = window.AudioContext || window.webkitAudioContext;
+          if (AudioCtx) this.ctx = new AudioCtx();
+        }
+        if (this.ctx && this.ctx.state === 'suspended') {
+          this.ctx.resume();
+        }
+      }
+      playTone(freq, duration, type = 'square', volume = 0.12, slideTo = null, delay = 0) {
+        if (this.muted) return;
+        this.init();
+        if (!this.ctx) return;
+        try {
+          const now = this.ctx.currentTime + delay;
+          const osc = this.ctx.createOscillator();
+          const gain = this.ctx.createGain();
+          osc.type = type;
+          osc.frequency.setValueAtTime(freq, now);
+          if (slideTo !== null) {
+            osc.frequency.exponentialRampToValueAtTime(Math.max(20, slideTo), now + duration);
+          }
+          gain.gain.setValueAtTime(volume, now);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + duration);
+          osc.connect(gain);
+          gain.connect(this.ctx.destination);
+          osc.start(now);
+          osc.stop(now + duration + 0.02);
+        } catch (e) {}
+      }
+      playNoise(duration, volume = 0.2, delay = 0) {
+        if (this.muted) return;
+        this.init();
+        if (!this.ctx) return;
+        try {
+          const now = this.ctx.currentTime + delay;
+          const bufferSize = Math.floor(this.ctx.sampleRate * duration);
+          const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
+          const data = buffer.getChannelData(0);
+          for (let i = 0; i < bufferSize; i++) data[i] = Math.random() * 2 - 1;
+          const noise = this.ctx.createBufferSource();
+          noise.buffer = buffer;
+          const filter = this.ctx.createBiquadFilter();
+          filter.type = 'lowpass';
+          filter.frequency.setValueAtTime(900, now);
+          const gain = this.ctx.createGain();
+          gain.gain.setValueAtTime(volume, now);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + duration);
+          noise.connect(filter);
+          filter.connect(gain);
+          gain.connect(this.ctx.destination);
+          noise.start(now);
+          noise.stop(now + duration);
+        } catch (e) {}
+      }
+
+      jump() { this.playTone(260, 0.16, 'square', 0.11, 580); }
+      coin() {
+        this.playTone(988, 0.08, 'square', 0.10, null, 0);
+        this.playTone(1319, 0.22, 'square', 0.10, null, 0.07);
+      }
+      bump() { this.playTone(140, 0.1, 'triangle', 0.15, 70); }
+      stomp() {
+        this.playTone(320, 0.09, 'square', 0.12, 120);
+        this.playTone(500, 0.08, 'square', 0.09, 700, 0.05);
+      }
+      powerup() {
+        [330, 392, 523, 659, 784, 1046].forEach((f, i) => {
+          this.playTone(f, 0.08, 'square', 0.1, null, i * 0.055);
+        });
+      }
+      checkpoint() {
+        [523, 659, 784, 1046].forEach((f, i) => {
+          this.playTone(f, 0.14, 'triangle', 0.15, null, i * 0.08);
+        });
+      }
+      hurt() {
+        this.playTone(420, 0.15, 'sawtooth', 0.14, 160);
+        this.playTone(220, 0.2, 'sawtooth', 0.14, 90, 0.12);
+      }
+      coffinSmash() {
+        this.playNoise(0.55, 0.35);
+        this.playTone(110, 0.45, 'sawtooth', 0.25, 32);
+        this.playTone(65, 0.55, 'triangle', 0.28, 25, 0.05);
+      }
+      reaperWarning() {
+        // 詭異低沉雙音警報
+        this.playTone(155, 0.6, 'sawtooth', 0.13, 130, 0);
+        this.playTone(220, 0.6, 'sawtooth', 0.10, 185, 0.05);
+        this.playTone(146, 0.7, 'sawtooth', 0.14, 110, 0.75);
+        this.playTone(207, 0.7, 'sawtooth', 0.11, 165, 0.8);
+        this.playTone(138, 0.8, 'sawtooth', 0.16, 95, 1.5);
+      }
+      scytheSlash() {
+        this.playNoise(0.28, 0.3);
+        this.playTone(1200, 0.18, 'sawtooth', 0.18, 180);
+        this.playTone(150, 0.4, 'square', 0.18, 45, 0.12);
+      }
+      reaperLeave() {
+        this.playTone(300, 0.4, 'sine', 0.1, 680);
+      }
+      fireball() { this.playTone(460, 0.12, 'sawtooth', 0.08, 190); }
+      bossHit() {
+        this.playNoise(0.25, 0.22);
+        this.playTone(220, 0.25, 'square', 0.18, 80);
+        this.playTone(580, 0.18, 'square', 0.12, 300, 0.05);
+      }
+      bossRoar() {
+        this.playNoise(0.45, 0.2);
+        this.playTone(140, 0.5, 'sawtooth', 0.2, 55);
+      }
+      victory() {
+        const notes = [523, 659, 784, 1046, 784, 1046, 1318];
+        const times = [0, 0.12, 0.24, 0.38, 0.56, 0.68, 0.84];
+        notes.forEach((n, i) => this.playTone(n, 0.22, 'square', 0.12, null, times[i]));
+      }
+    }
+
+    const sfx = new SoundEngine();
+
+    /* =========================================================================
+       2. 遊戲常數與關卡建構器（第一關 ~30,400px，第二關 ~42,400px 含魔王房）
+       ========================================================================= */
+    const TILE = 40;
+    const VIEW_W = 960;
+    const VIEW_H = 540;
+    const GROUND_Y = 460; // 地面上緣 Y 座標（共 2 層地磚到 540）
+
+    // 確定性偽亂數（確保每次載入同關卡地形一致，方便記憶與存檔）
+    function createRNG(seed) {
+      let s = seed % 2147483647;
+      if (s <= 0) s += 2147483646;
+      return () => {
+        s = (s * 16807) % 2147483647;
+        return (s - 1) / 2147483646;
+      };
+    }
+
+    function buildLevel(levelNum) {
+      const rng = createRNG(levelNum === 1 ? 202601 : 202602);
+      const isL1 = levelNum === 1;
+      const totalTiles = isL1 ? 760 : 1060; // L1: 30,400px (~3分鐘), L2: 42,400px (~5分鐘+含魔王)
+      const levelWidth = totalTiles * TILE;
+
+      const solids = [];       // {x, y, w, h, type, hitAnim, used, content, id}
+      const platforms = [];    // 移動平台 {x, y, w, h, startX, startY, endX, endY, speed, t, dx, dy}
+      const enemies = [];      // {x, y, w, h, vx, vy, type, alive, state, shellTimer, facing}
+      const coins = [];        // 空中金幣 {x, y, r, collected}
+      const checkpoints = [];  // {x, y, activated, index}
+      const firebars = [];     // L2 旋轉火棒 {cx, cy, len, angle, speed}
+      const lavaBalls = [];    // L2 岩漿火球 {x, baseY, y, vy, waitTimer, active}
+      const decor = [];        // 背景裝飾
+
+      // 輔助函式
+      const addSolid = (tx, ty, tw, th, type, content = null) => {
+        solids.push({
+          x: tx * TILE,
+          y: GROUND_Y - ty * TILE,
+          w: tw * TILE,
+          h: th * TILE,
+          type, // 'ground', 'brick', 'qblock', 'pipe', 'stone', 'bossblock', 'gate'
+          used: false,
+          content, // 'coin', 'mushroom', 'star'
+          bumpY: 0,
+          cooldown: 0
+        });
+      };
+
+      const addGroundRange = (startTile, lenTiles) => {
+        if (lenTiles <= 0) return;
+        solids.push({
+          x: startTile * TILE,
+          y: GROUND_Y,
+          w: lenTiles * TILE,
+          h: VIEW_H - GROUND_Y + 80,
+          type: isL1 ? 'ground' : 'castle_ground',
+          used: false,
+          bumpY: 0
+        });
+      };
+
+      const addEnemy = (tx, ty, type) => {
+        enemies.push({
+          x: tx * TILE,
+          y: GROUND_Y - ty * TILE - 34,
+          w: 34,
+          h: 34,
+          vx: type === 'koopa' ? -85 : (type === 'guard' ? -110 : -75),
+          vy: 0,
+          type, // 'goomba', 'koopa', 'guard'
+          alive: true,
+          state: 'walk', // 'walk', 'shell', 'spin'
+          facing: -1,
+          animT: rng() * 10
+        });
+      };
+
+      const addCoinArc = (startTx, baseTy, count) => {
+        for (let i = 0; i < count; i++) {
+          const arc = Math.sin((i / Math.max(1, count - 1)) * Math.PI) * 1.3;
+          coins.push({
+            x: (startTx + i) * TILE + TILE / 2,
+            y: GROUND_Y - (baseTy + arc) * TILE - 20,
+            r: 12,
+            collected: false
+          });
+        }
+      };
+
+      // 起點安全區（16 格平地）
+      addGroundRange(0, 18);
+      // 起始引導方塊
+      addSolid(7, 3, 1, 1, 'qblock', 'coin');
+      addSolid(8, 3, 1, 1, 'brick');
+      addSolid(9, 3, 1, 1, 'qblock', 'mushroom');
+      addSolid(10, 3, 1, 1, 'brick');
+      addSolid(11, 3, 1, 1, 'qblock', 'coin');
+
+      // 決定存檔點位置（L1: 4個, L2: 5個）
+      const cpTiles = isL1
+        ? [150, 300, 450, 600]
+        : [170, 340, 510, 680, 960]; // L2 第 5 個存檔點在魔王房門前
+
+      const endPlayableTile = isL1 ? totalTiles - 30 : totalTiles - 52; // L2 預留 52 格給魔王房
+
+      let cur = 18;
+      let segmentIdx = 0;
+
+      while (cur < endPlayableTile) {
+        // 檢查是否接近存檔點：強制建立 14 格安全平地 + 存檔旗幟 + 補給蘑菇
+        const nextCp = cpTiles.find(t => t >= cur && t <= cur + 26);
+        if (nextCp !== undefined) {
+          const preLen = Math.max(2, nextCp - cur);
+          addGroundRange(cur, preLen + 12);
+          checkpoints.push({
+            x: nextCp * TILE,
+            y: GROUND_Y,
+            activated: false,
+            index: cpTiles.indexOf(nextCp) + 1
+          });
+          // 存檔點旁提供一個補給問號方塊
+          addSolid(nextCp + 4, 3, 1, 1, 'qblock', 'mushroom');
+          addCoinArc(nextCp + 6, 1.2, 4);
+          cur = nextCp + 12;
+          continue;
+        }
+
+        // 每隔 4 個段落保證一段「安全平地」（讓玩家遇到死神時有地方安全平走或暫停）
+        const pattern = segmentIdx % 7;
+        segmentIdx++;
+
+        if (pattern === 0) {
+          // 經典水管 + 敵人 + 問號方塊段（18格平地）
+          addGroundRange(cur, 18);
+          addSolid(cur + 3, 2, 2, 2, 'pipe');
+          addEnemy(cur + 7, 0, isL1 ? 'goomba' : 'guard');
+          addSolid(cur + 8, 3, 1, 1, 'brick');
+          addSolid(cur + 9, 3, 1, 1, 'qblock', rng() < 0.25 ? 'star' : 'coin');
+          addSolid(cur + 10, 3, 1, 1, 'brick');
+          addEnemy(cur + 12, 0, 'koopa');
+          addSolid(cur + 14, 3, 2, 3, 'pipe');
+          addCoinArc(cur + 6, 4.5, 4);
+          cur += 18;
+        } else if (pattern === 1) {
+          // 深坑跳躍 + 空中金幣（坑寬 2~3 格，完全可跳過）
+          addGroundRange(cur, 5);
+          const gap1 = isL1 ? 2 : 3;
+          addCoinArc(cur + 4.5, 2.2, gap1 + 1);
+          if (!isL1) {
+            lavaBalls.push({
+              x: (cur + 5 + gap1 / 2) * TILE,
+              baseY: VIEW_H + 30,
+              y: VIEW_H + 30,
+              vy: 0,
+              waitTimer: rng() * 2,
+              active: false
+            });
+          }
+          addGroundRange(cur + 5 + gap1, 7);
+          addEnemy(cur + 7 + gap1, 0, isL1 ? 'goomba' : 'koopa');
+          addSolid(cur + 8 + gap1, 3, 1, 1, 'qblock', 'coin');
+          cur += 12 + gap1;
+        } else if (pattern === 2) {
+          // 移動平台跨越大深坑（14格）
+          addGroundRange(cur, 4);
+          const pitW = 8;
+          platforms.push({
+            x: (cur + 4.5) * TILE,
+            y: GROUND_Y - 1.5 * TILE,
+            w: 3 * TILE,
+            h: 20,
+            startX: (cur + 4.2) * TILE,
+            startY: GROUND_Y - 1.5 * TILE,
+            endX: (cur + 9.0) * TILE,
+            endY: GROUND_Y - (isL1 ? 1.5 : 2.3) * TILE,
+            speed: isL1 ? 0.85 : 1.05,
+            t: rng() * Math.PI * 2,
+            dx: 0,
+            dy: 0
+          });
+          addCoinArc(cur + 5, 3.2, 5);
+          if (!isL1) {
+            lavaBalls.push({
+              x: (cur + 8) * TILE,
+              baseY: VIEW_H + 30,
+              y: VIEW_H + 30,
+              vy: 0,
+              waitTimer: 1.0,
+              active: false
+            });
+          }
+          addGroundRange(cur + 4 + pitW, 5);
+          cur += 9 + pitW;
+        } else if (pattern === 3) {
+          // 階梯式方塊跑酷（20格，含高處獎勵）
+          addGroundRange(cur, 20);
+          for (let s = 1; s <= 4; s++) {
+            addSolid(cur + 2 + s, s, 1, s, 'stone');
+          }
+          addSolid(cur + 8, 4, 4, 1, 'brick');
+          addSolid(cur + 9, 4, 1, 1, 'qblock', rng() < 0.35 ? 'mushroom' : 'coin');
+          addCoinArc(cur + 8, 5.2, 4);
+          addEnemy(cur + 11, 0, isL1 ? 'koopa' : 'guard');
+          if (!isL1) {
+            // 旋轉火棒機關
+            addSolid(cur + 14, 2, 1, 1, 'stone');
+            firebars.push({
+              cx: (cur + 14.5) * TILE,
+              cy: GROUND_Y - 1.5 * TILE,
+              count: 5,
+              spacing: 22,
+              angle: rng() * Math.PI * 2,
+              speed: (rng() < 0.5 ? 1 : -1) * 1.9
+            });
+          } else {
+            addEnemy(cur + 15, 0, 'goomba');
+          }
+          cur += 20;
+        } else if (pattern === 4) {
+          // 安全平地巡航段（對抗死神 10 秒的絕佳緩衝區，16格平地）
+          addGroundRange(cur, 16);
+          addSolid(cur + 5, 3, 1, 1, 'qblock', 'coin');
+          addSolid(cur + 6, 3, 1, 1, 'qblock', 'coin');
+          addSolid(cur + 7, 3, 1, 1, 'qblock', 'coin');
+          addEnemy(cur + 11, 0, 'goomba');
+          addCoinArc(cur + 2, 1.0, 3);
+          cur += 16;
+        } else if (pattern === 5) {
+          // 雙層高空平台 + 地下怪物（18格）
+          addGroundRange(cur, 18);
+          addSolid(cur + 3, 2, 3, 1, 'brick');
+          addSolid(cur + 7, 4, 4, 1, 'brick');
+          addSolid(cur + 8, 4, 1, 1, 'qblock', rng() < 0.25 ? 'star' : 'coin');
+          addCoinArc(cur + 7, 5.2, 4);
+          addEnemy(cur + 6, 0, 'goomba');
+          addEnemy(cur + 10, 0, isL1 ? 'koopa' : 'guard');
+          addSolid(cur + 13, 2, 3, 1, 'brick');
+          if (!isL1) {
+            addSolid(cur + 14, 2, 1, 1, 'stone');
+            firebars.push({
+              cx: (cur + 14.5) * TILE,
+              cy: GROUND_Y - 1.5 * TILE,
+              count: 4,
+              spacing: 22,
+              angle: 0,
+              speed: 2.2
+            });
+          }
+          cur += 18;
+        } else {
+          // 連續雙小坑 + 垂直移動平台（18格）
+          addGroundRange(cur, 4);
+          const g = isL1 ? 2 : 3;
+          addGroundRange(cur + 4 + g, 5);
+          addEnemy(cur + 6 + g, 0, 'goomba');
+          platforms.push({
+            x: (cur + 9 + g + 0.5) * TILE,
+            y: GROUND_Y - 1 * TILE,
+            w: 2.5 * TILE,
+            h: 20,
+            startX: (cur + 9 + g + 0.5) * TILE,
+            startY: GROUND_Y - 0.5 * TILE,
+            endX: (cur + 9 + g + 0.5) * TILE,
+            endY: GROUND_Y - 3.2 * TILE,
+            speed: 1.2,
+            t: 0,
+            dx: 0,
+            dy: 0
+          });
+          addGroundRange(cur + 13 + g, 5);
+          cur += 18 + g;
+        }
+      }
+
+      // 終點區建置
+      let goalX = 0;
+      let bossArena = null;
+
+      if (isL1) {
+        // 第一關：經典終點階梯 + 旗桿 + 城堡
+        addGroundRange(cur, totalTiles - cur + 10);
+        for (let s = 1; s <= 7; s++) {
+          addSolid(cur + 2 + s, s, 1, s, 'stone');
+        }
+        goalX = (cur + 16) * TILE;
+      } else {
+        // 第二關：魔王房（長 36 格 = 1440px，鎖門後視角鎖定 960px 競技場）
+        addGroundRange(cur, totalTiles - cur + 15);
+        const arenaStartTile = cur + 6;
+        const arenaEndTile = arenaStartTile + 24; // 24 * 40 = 960px 完美符合視窗寬度！
+
+        // 競技場右側封閉高牆
+        addSolid(arenaEndTile, 14, 2, 14, 'stone');
+
+        // 競技場內 3 個「⚡機關落雷方塊」（頂撞觸發落雷重創魔王）
+        const trapOffsets = [5, 12, 19];
+        trapOffsets.forEach(off => {
+          addSolid(arenaStartTile + off, 3.2, 1, 1, 'bossblock');
+        });
+
+        // 兩個高處躲避平台
+        addSolid(arenaStartTile + 2, 2.2, 2, 0.5, 'stone');
+        addSolid(arenaStartTile + 20, 2.2, 2, 0.5, 'stone');
+
+        bossArena = {
+          triggerX: (arenaStartTile + 2.5) * TILE,
+          leftX: arenaStartTile * TILE,
+          rightX: arenaEndTile * TILE,
+          gateTileX: arenaStartTile - 1,
+          locked: false,
+          defeated: false
+        };
+        goalX = (arenaEndTile - 2) * TILE;
+      }
+
+      // 生成視差背景雲朵 / 山丘 / 城堡窗戶
+      for (let i = 0; i < Math.floor(levelWidth / 260); i++) {
+        decor.push({
+          x: i * 260 + rng() * 140,
+          y: 45 + rng() * 120,
+          scale: 0.7 + rng() * 0.8,
+          type: isL1 ? (i % 3 === 0 ? 'hill' : 'cloud') : 'window'
+        });
+      }
+
+      return {
+        levelNum,
+        name: isL1 ? '第一關：陽光草原' : '第二關：煉獄魔王城',
+        width: levelWidth,
+        solids,
+        platforms,
+        enemies,
+        coins,
+        checkpoints,
+        firebars,
+        lavaBalls,
+        decor,
+        goalX,
+        bossArena
+      };
+    }
+
+    /* =========================================================================
+       3. 主遊戲引擎
+       ========================================================================= */
+    class Game {
+      constructor() {
+        this.canvas = document.getElementById('game-canvas');
+        this.ctx = this.canvas.getContext('2d');
+        this.resizeCanvas();
+        window.addEventListener('resize', () => this.resizeCanvas());
+
+        this.state = 'title'; // 'title', 'playing', 'paused', 'dying', 'dead', 'victory'
+        this.levelNum = 1;
+        this.level = null;
+
+        // 鍵盤輸入
+        this.keys = { left: false, right: false, jump: false, jumpPressed: false };
+        this.bindInputs();
+
+        // 統計
+        this.elapsedTime = 0;
+        this.coinsCount = 0;
+        this.deathCount = 0;
+        this.lastCheckpoint = { x: 100, y: GROUND_Y - 48 };
+
+        // 玩家狀態
+        this.player = null;
+        this.cameraX = 0;
+        this.shakeTimer = 0;
+        this.shakeIntensity = 0;
+
+        // 實體特效
+        this.items = [];     // 蘑菇 / 星星
+        this.particles = []; // 碎片 / 閃光
+        this.fireballs = []; // 魔王火球
+        this.lightnings = []; // 落雷特效
+
+        // 核心機制一：30 秒原地停留棺材
+        this.idleAnchorX = 0;
+        this.idleTimer = 0;
+        this.coffin = null; // {x, y, vy, targetY, smashed}
+
+        // 核心機制二：45~60 秒死神追擊 10 秒
+        this.reaperState = 'cooldown'; // 'cooldown', 'warning', 'active'
+        this.reaperTimer = 48;
+        this.reaperVisual = { x: 0, y: 0, alpha: 0, slashTimer: 0 };
+
+        // 第二關魔王
+        this.boss = null;
+
+        // 死亡動畫延遲
+        this.deathDelay = 0;
+        this.pendingDeathMsg = '';
+        this.pendingDeathIcon = '💀';
+
+        // 啟動主迴圈
+        this.lastTime = performance.now();
+        requestAnimationFrame((t) => this.loop(t));
+      }
+
+      resizeCanvas() {
+        const dpr = Math.min(window.devicePixelRatio || 1, 2);
+        this.canvas.width = VIEW_W * dpr;
+        this.canvas.height = VIEW_H * dpr;
+        this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      }
+
+      bindInputs() {
+        window.addEventListener('keydown', (e) => {
+          if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Space', ' '].includes(e.key)) {
+            e.preventDefault();
+          }
+          if (e.key === 'p' || e.key === 'P' || e.key === 'Escape') {
+            if (this.state === 'playing') this.pauseGame();
+            else if (this.state === 'paused') this.resumeGame();
+            return;
+          }
+          if (this.state !== 'playing') return;
+
+          if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A') {
+            this.keys.left = true;
+          }
+          if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') {
+            this.keys.right = true;
+          }
+          if (e.key === 'ArrowUp' || e.key === 'w' || e.key === 'W' || e.key === ' ') {
+            if (!this.keys.jump) this.keys.jumpPressed = true;
+            this.keys.jump = true;
+          }
+        });
+
+        window.addEventListener('keyup', (e) => {
+          if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A') this.keys.left = false;
+          if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') this.keys.right = false;
+          if (e.key === 'ArrowUp' || e.key === 'w' || e.key === 'W' || e.key === ' ') this.keys.jump = false;
+        });
+
+        // 觸控支援
+        const isTouchDevice = ('ontouchstart' in window) || navigator.maxTouchPoints > 0;
+        const touchUI = document.getElementById('touch-controls');
+        if (isTouchDevice || window.innerWidth < 820) {
+          touchUI.classList.remove('hidden');
+        }
+        const bindTouch = (id, keyName, isJump = false) => {
+          const el = document.getElementById(id);
+          const down = (e) => {
+            e.preventDefault();
+            sfx.init();
+            el.classList.add('active');
+            if (isJump && !this.keys.jump) this.keys.jumpPressed = true;
+            this.keys[keyName] = true;
+          };
+          const up = (e) => {
+            e.preventDefault();
+            el.classList.remove('active');
+            this.keys[keyName] = false;
+          };
+          el.addEventListener('touchstart', down, { passive: false });
+          el.addEventListener('touchend', up, { passive: false });
+          el.addEventListener('touchcancel', up, { passive: false });
+          el.addEventListener('mousedown', down);
+          el.addEventListener('mouseup', up);
+          el.addEventListener('mouseleave', up);
+        };
+        bindTouch('touch-left', 'left');
+        bindTouch('touch-right', 'right');
+        bindTouch('touch-jump', 'jump', true);
+
+        // UI 按鈕綁定
+        document.getElementById('btn-start-l1').onclick = () => { sfx.init(); this.startLevel(1); };
+        document.getElementById('btn-start-l2').onclick = () => { sfx.init(); this.startLevel(2); };
+        document.getElementById('btn-mute').onclick = () => {
+          sfx.muted = !sfx.muted;
+          document.getElementById('btn-mute').textContent = sfx.muted ? '🔇' : '🔊';
+        };
+        document.getElementById('btn-pause').onclick = () => {
+          if (this.state === 'playing') this.pauseGame();
+          else if (this.state === 'paused') this.resumeGame();
+        };
+        document.getElementById('btn-resume').onclick = () => this.resumeGame();
+        document.getElementById('btn-pause-cp').onclick = () => this.respawnAtCheckpoint();
+        document.getElementById('btn-pause-restart').onclick = () => this.startLevel(this.levelNum);
+        document.getElementById('btn-pause-title').onclick = () => this.goToTitle();
+
+        document.getElementById('btn-respawn-cp').onclick = () => this.respawnAtCheckpoint();
+        document.getElementById('btn-restart-level').onclick = () => this.startLevel(this.levelNum);
+        document.getElementById('btn-death-title').onclick = () => this.goToTitle();
+
+        document.getElementById('btn-next-level').onclick = () => {
+          if (this.levelNum === 1) this.startLevel(2);
+          else this.startLevel(1);
+        };
+        document.getElementById('btn-vic-title').onclick = () => this.goToTitle();
+      }
+
+      hideAllModals() {
+        ['title-screen', 'pause-modal', 'death-modal', 'victory-modal'].forEach(id => {
+          document.getElementById(id).classList.add('hidden');
+        });
+      }
+
+      goToTitle() {
+        this.state = 'title';
+        this.hideAllModals();
+        this.clearOverlays();
+        document.getElementById('title-screen').classList.remove('hidden');
+      }
+
+      clearOverlays() {
+        document.getElementById('idle-warning-overlay').classList.add('hidden');
+        document.getElementById('reaper-warning-banner').classList.add('hidden');
+        document.getElementById('reaper-active-vignette').classList.add('hidden');
+        document.getElementById('reaper-active-hud').classList.add('hidden');
+        document.getElementById('boss-hud').classList.add('hidden');
+      }
+
+      startLevel(num) {
+        this.levelNum = num;
+        this.level = buildLevel(num);
+        this.elapsedTime = 0;
+        this.coinsCount = 0;
+        this.deathCount = 0;
+        this.lastCheckpoint = { x: 100, y: GROUND_Y - 48 };
+        document.getElementById('hud-level').textContent = this.level.name;
+        this.spawnPlayer(true);
+      }
+
+      respawnAtCheckpoint() {
+        // 保留已觸發的存檔點與計時，重置敵人/魔王/機關狀態讓復活乾淨公平
+        const savedCp = { ...this.lastCheckpoint };
+        const savedCheckpoints = this.level.checkpoints.map(c => c.activated);
+        this.level = buildLevel(this.levelNum);
+        this.level.checkpoints.forEach((c, i) => { c.activated = savedCheckpoints[i]; });
+        this.lastCheckpoint = savedCp;
+        this.spawnPlayer(false);
+      }
+
+      spawnPlayer(resetTimers) {
+        this.hideAllModals();
+        this.clearOverlays();
+        this.keys = { left: false, right: false, jump: false, jumpPressed: false };
+
+        this.player = {
+          x: this.lastCheckpoint.x,
+          y: this.lastCheckpoint.y,
+          w: 30,
+          h: 42,
+          vx: 0,
+          vy: 0,
+          facing: 1,
+          onGround: false,
+          coyoteTime: 0,
+          jumpBuffer: 0,
+          big: false,
+          invincibleTimer: 0, // 受傷無敵
+          starTimer: 0,       // 無敵星星
+          squashed: false,
+          animFrame: 0
+        };
+
+        this.items = [];
+        this.particles = [];
+        this.fireballs = [];
+        this.lightnings = [];
+        this.coffin = null;
+        this.boss = null;
+        this.shakeTimer = 0;
+
+        // 重置原地停留計時
+        this.idleAnchorX = this.player.x;
+        this.idleTimer = 0;
+
+        // 重置死神計時（45～60秒隨機）
+        this.reaperState = 'cooldown';
+        this.reaperTimer = 45 + Math.random() * 15;
+        this.reaperVisual = { x: this.player.x - 70, y: this.player.y - 20, alpha: 0, slashTimer: 0 };
+
+        this.cameraX = Math.max(0, this.player.x - VIEW_W * 0.35);
+        this.state = 'playing';
+      }
+
+      pauseGame() {
+        this.state = 'paused';
+        document.getElementById('pause-modal').classList.remove('hidden');
+      }
+
+      resumeGame() {
+        this.state = 'playing';
+        document.getElementById('pause-modal').classList.add('hidden');
+        this.lastTime = performance.now();
+      }
+
+      showToast(text) {
+        const el = document.getElementById('toast-msg');
+        el.textContent = text;
+        el.classList.remove('hidden');
+        clearTimeout(this.toastTimeout);
+        this.toastTimeout = setTimeout(() => el.classList.add('hidden'), 2200);
+      }
+
+      triggerShake(duration, intensity) {
+        this.shakeTimer = Math.max(this.shakeTimer, duration);
+        this.shakeIntensity = Math.max(this.shakeIntensity, intensity);
+      }
+
+      spawnParticles(x, y, color, count = 12, speed = 220) {
+        for (let i = 0; i < count; i++) {
+          const ang = Math.random() * Math.PI * 2;
+          const spd = (0.3 + Math.random() * 0.7) * speed;
+          this.particles.push({
+            x, y,
+            vx: Math.cos(ang) * spd,
+            vy: Math.sin(ang) * spd - 80,
+            size: 4 + Math.random() * 5,
+            color,
+            life: 0.45 + Math.random() * 0.45,
+            maxLife: 0.9
+          });
+        }
+      }
+
+      killPlayer(reason, icon = '💀', delay = 0.85) {
+        if (this.state !== 'playing') return;
+        this.state = 'dying';
+        this.deathCount++;
+        this.deathDelay = delay;
+        this.pendingDeathMsg = reason;
+        this.pendingDeathIcon = icon;
+        this.keys = { left: false, right: false, jump: false, jumpPressed: false };
+      }
+
+      showDeathModal() {
+        this.state = 'dead';
+        this.clearOverlays();
+        document.getElementById('death-icon').textContent = this.pendingDeathIcon;
+        document.getElementById('death-reason').textContent = this.pendingDeathMsg;
+        const prog = Math.min(100, Math.floor((this.player.x / this.level.goalX) * 100));
+        document.getElementById('death-progress').textContent = prog + '%';
+        document.getElementById('death-time').textContent = this.formatTime(this.elapsedTime);
+        document.getElementById('death-modal').classList.remove('hidden');
+      }
+
+      triggerVictory() {
+        if (this.state !== 'playing') return;
+        this.state = 'victory';
+        this.clearOverlays();
+        sfx.victory();
+        document.getElementById('victory-title').textContent =
+          this.levelNum === 1 ? '🌿 第一關：陽光草原 通關！' : '👑 煉獄魔王城 徹底制霸！';
+        document.getElementById('victory-desc').textContent =
+          this.levelNum === 1
+            ? '太強了！你成功穿越草原並逃過死神與棺材的追殺，準備好面對煉獄魔王了嗎？'
+            : '傳說誕生！你擊敗了煉獄魔龍王，征服了最殘酷的恐怖瑪利歐生存挑戰！';
+        document.getElementById('vic-time').textContent = this.formatTime(this.elapsedTime);
+        document.getElementById('vic-coins').textContent = this.coinsCount;
+        document.getElementById('vic-deaths').textContent = this.deathCount;
+        const nextBtn = document.getElementById('btn-next-level');
+        nextBtn.textContent = this.levelNum === 1 ? '🔥 前往第二關：煉獄魔王城' : '🌿 重新挑戰第一關';
+        document.getElementById('victory-modal').classList.remove('hidden');
+      }
+
+      formatTime(sec) {
+        const m = Math.floor(sec / 60);
+        const s = Math.floor(sec % 60);
+        return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+      }
+
+      /* -----------------------------------------------------------------------
+         主更新迴圈
+         ----------------------------------------------------------------------- */
+      loop(now) {
+        const dt = Math.min(0.04, (now - this.lastTime) / 1000);
+        this.lastTime = now;
+
+        if (this.state === 'playing') {
+          this.update(dt);
+        } else if (this.state === 'dying') {
+          this.updateDying(dt);
+        }
+
+        if (this.level) {
+          this.render();
+          this.updateHUD();
+        }
+        requestAnimationFrame((t) => this.loop(t));
+      }
+
+      updateDying(dt) {
+        if (this.shakeTimer > 0) this.shakeTimer -= dt;
+        this.updateParticles(dt);
+        if (this.coffin && !this.coffin.smashed) {
+          this.coffin.vy += 2800 * dt;
+          this.coffin.y += this.coffin.vy * dt;
+          if (this.coffin.y >= this.coffin.targetY) {
+            this.coffin.y = this.coffin.targetY;
+            this.coffin.smashed = true;
+            this.player.squashed = true;
+            sfx.coffinSmash();
+            this.triggerShake(0.45, 14);
+            this.spawnParticles(this.player.x + 15, this.player.y + 30, '#8b5a2b', 26, 320);
+            this.spawnParticles(this.player.x + 15, this.player.y + 30, '#ef4444', 18, 240);
+          }
+        }
+        if (this.reaperVisual.slashTimer > 0) {
+          this.reaperVisual.slashTimer -= dt;
+        }
+        this.deathDelay -= dt;
+        if (this.deathDelay <= 0) {
+          this.showDeathModal();
+        }
+      }
+
+      update(dt) {
+        this.elapsedTime += dt;
+        if (this.shakeTimer > 0) this.shakeTimer -= dt;
+
+        // 1. 更新死神機制（必須優先偵測違規回頭與跳躍！）
+        if (this.updateReaper(dt)) return; // 若被死神秒殺則立刻中止本幀
+
+        // 2. 更新移動平台
+        this.updatePlatforms(dt);
+
+        // 3. 更新玩家物理與碰撞
+        this.updatePlayer(dt);
+        if (this.state !== 'playing') return;
+
+        // 4. 更新原地停留 30 秒棺材機制
+        if (this.updateIdleCoffin(dt)) return;
+
+        // 5. 更新道具、金幣、敵人、機關與魔王
+        this.updateBlocks(dt);
+        this.updateItems(dt);
+        this.updateCoins();
+        this.updateCheckpoints();
+        this.updateEnemies(dt);
+        this.updateHazards(dt);
+        this.updateBoss(dt);
+        this.updateParticles(dt);
+
+        // 6. 攝影機平滑跟隨（魔王房鎖定視角）
+        const arena = this.level.bossArena;
+        if (arena && arena.locked) {
+          this.cameraX += (arena.leftX - this.cameraX) * Math.min(1, dt * 8);
+        } else {
+          const targetCam = Math.max(0, Math.min(this.level.width - VIEW_W, this.player.x - VIEW_W * 0.36));
+          this.cameraX += (targetCam - this.cameraX) * Math.min(1, dt * 10);
+        }
+
+        // 7. 第一關終點旗桿判定
+        if (this.levelNum === 1 && this.player.x + this.player.w >= this.level.goalX) {
+          this.triggerVictory();
+        }
+
+        this.keys.jumpPressed = false;
+      }
+
+      /* -----------------------------------------------------------------------
+         核心機制一：原地停留 30 秒天降棺材
+         ----------------------------------------------------------------------- */
+      updateIdleCoffin(dt) {
+        const p = this.player;
+        if (Math.abs(p.x - this.idleAnchorX) < 25) {
+          this.idleTimer += dt;
+        } else {
+          this.idleAnchorX = p.x;
+          this.idleTimer = 0;
+        }
+
+        const warnEl = document.getElementById('idle-warning-overlay');
+        if (this.idleTimer > 5) {
+          warnEl.classList.remove('hidden');
+          const remain = Math.max(0, 30 - this.idleTimer);
+          document.getElementById('idle-countdown-num').textContent = remain.toFixed(1) + 's';
+          document.getElementById('idle-bar-fill').style.width = Math.min(100, (this.idleTimer / 30) * 100) + '%';
+
+          // 最後 5 秒：畫面微微震動
+          if (this.idleTimer >= 25) {
+            this.triggerShake(0.1, 2.5 + (this.idleTimer - 25) * 0.9);
+          }
+        } else {
+          warnEl.classList.add('hidden');
+        }
+
+        // 滿 30 秒：巨型木頭棺材從天而降砸死玩家！
+        if (this.idleTimer >= 30) {
+          warnEl.classList.add('hidden');
+          this.coffin = {
+            x: p.x + p.w / 2 - 42,
+            y: -140,
+            w: 84,
+            h: 112,
+            vy: 300,
+            targetY: p.y + p.h - 102,
+            smashed: false
+          };
+          this.killPlayer('你原地停留太久，被天降棺材砸死了！', '⚰️', 1.35);
+          return true;
+        }
+        return false;
+      }
+
+      /* -----------------------------------------------------------------------
+         核心機制二：每 45～60 秒死神追擊 10 秒（禁止回頭、禁止跳躍）
+         ----------------------------------------------------------------------- */
+      updateReaper(dt) {
+        const p = this.player;
+        const warnBanner = document.getElementById('reaper-warning-banner');
+        const activeVig = document.getElementById('reaper-active-vignette');
+        const activeHud = document.getElementById('reaper-active-hud');
+
+        if (this.reaperState === 'cooldown') {
+          this.reaperTimer -= dt;
+          this.reaperVisual.alpha = Math.max(0, this.reaperVisual.alpha - dt * 2);
+          if (this.reaperTimer <= 0) {
+            this.reaperState = 'warning';
+            this.reaperTimer = 2.5;
+            sfx.reaperWarning();
+            warnBanner.classList.remove('hidden');
+          }
+        } else if (this.reaperState === 'warning') {
+          this.reaperTimer -= dt;
+          if (this.reaperTimer <= 0) {
+            this.reaperState = 'active';
+            this.reaperTimer = 10.0;
+            warnBanner.classList.add('hidden');
+            activeVig.classList.remove('hidden');
+            activeHud.classList.remove('hidden');
+            this.reaperVisual.x = p.x - 62;
+            this.reaperVisual.y = p.y - 34;
+            this.reaperVisual.alpha = 1;
+          }
+        } else if (this.reaperState === 'active') {
+          this.reaperTimer -= dt;
+          document.getElementById('reaper-timer-num').textContent = Math.max(0, this.reaperTimer).toFixed(1);
+
+          // 死神緊跟在玩家身後（左側）
+          const targetRx = p.x - 56;
+          const targetRy = p.y - 34 + Math.sin(this.elapsedTime * 6) * 7;
+          this.reaperVisual.x += (targetRx - this.reaperVisual.x) * Math.min(1, dt * 10);
+          this.reaperVisual.y += (targetRy - this.reaperVisual.y) * Math.min(1, dt * 10);
+          this.reaperVisual.alpha = 1;
+
+          // 禁忌判定 1：回頭（按左鍵或向左移動）
+          if (this.keys.left || p.vx < -8) {
+            sfx.scytheSlash();
+            this.reaperVisual.slashTimer = 0.7;
+            this.reaperVisual.x = p.x - 24;
+            this.triggerShake(0.4, 12);
+            this.spawnParticles(p.x + p.w / 2, p.y + p.h / 2, '#dc2626', 28, 300);
+            this.killPlayer('你回頭了，被死神收割靈魂！', '💀', 1.0);
+            return true;
+          }
+
+          // 禁忌判定 2：跳躍（按下跳躍鍵）
+          if (this.keys.jump || this.keys.jumpPressed) {
+            sfx.scytheSlash();
+            this.reaperVisual.slashTimer = 0.7;
+            this.reaperVisual.x = p.x - 24;
+            this.triggerShake(0.4, 12);
+            this.spawnParticles(p.x + p.w / 2, p.y + p.h / 2, '#dc2626', 28, 300);
+            this.killPlayer('你跳起來了，被死神收割靈魂！', '💀', 1.0);
+            return true;
+          }
+
+          // 撐過 10 秒：死神消散並重新隨機 45~60 秒
+          if (this.reaperTimer <= 0) {
+            this.reaperState = 'cooldown';
+            this.reaperTimer = 45 + Math.random() * 15;
+            activeVig.classList.add('hidden');
+            activeHud.classList.add('hidden');
+            sfx.reaperLeave();
+            this.spawnParticles(this.reaperVisual.x + 25, this.reaperVisual.y + 30, '#94a3b8', 18, 160);
+            this.showToast('✨ 成功躲過死神追擊！');
+          }
+        }
+        return false;
+      }
+
+      /* -----------------------------------------------------------------------
+         玩家移動與碰撞物理（含土狼時間與跳躍緩衝，手感極佳）
+         ----------------------------------------------------------------------- */
+      updatePlayer(dt) {
+        const p = this.player;
+        if (p.invincibleTimer > 0) p.invincibleTimer -= dt;
+        if (p.starTimer > 0) p.starTimer -= dt;
+
+        const maxSpd = p.starTimer > 0 ? 315 : 260;
+        const accel = p.onGround ? 1900 : 1300;
+        const friction = p.onGround ? 1700 : 350;
+
+        if (this.keys.left) {
+          p.vx = Math.max(-maxSpd, p.vx - accel * dt);
+          p.facing = -1;
+        } else if (this.keys.right) {
+          p.vx = Math.min(maxSpd, p.vx + accel * dt);
+          p.facing = 1;
+        } else {
+          if (Math.abs(p.vx) <= friction * dt) p.vx = 0;
+          else p.vx -= Math.sign(p.vx) * friction * dt;
+        }
+
+        // 土狼時間與跳躍緩衝
+        if (p.onGround) p.coyoteTime = 0.11;
+        else p.coyoteTime = Math.max(0, p.coyoteTime - dt);
+
+        if (this.keys.jumpPressed) p.jumpBuffer = 0.12;
+        else p.jumpBuffer = Math.max(0, p.jumpBuffer - dt);
+
+        if (p.jumpBuffer > 0 && p.coyoteTime > 0) {
+          p.vy = -615;
+          p.onGround = false;
+          p.coyoteTime = 0;
+          p.jumpBuffer = 0;
+          sfx.jump();
+          this.spawnParticles(p.x + p.w / 2, p.y + p.h, '#e2e8f0', 5, 80);
+        }
+
+        // 可變跳躍高度（放開跳躍鍵提前減速）
+        if (!this.keys.jump && p.vy < -220) {
+          p.vy *= 0.88;
+        }
+
+        // 重力
+        p.vy = Math.min(880, p.vy + 1650 * dt);
+
+        // 水平移動與方塊碰撞
+        p.x += p.vx * dt;
+        if (p.x < 0) { p.x = 0; p.vx = 0; }
+        const arena = this.level.bossArena;
+        if (arena && arena.locked) {
+          if (p.x < arena.leftX) { p.x = arena.leftX; p.vx = 0; }
+        }
+
+        const nearbySolids = this.getNearbySolids(p.x, p.w);
+        for (const s of nearbySolids) {
+          if (this.aabb(p, s)) {
+            if (p.vx > 0) p.x = s.x - p.w;
+            else if (p.vx < 0) p.x = s.x + s.w;
+            p.vx = 0;
+          }
+        }
+
+        // 垂直移動與方塊碰撞
+        const prevBottom = p.y + p.h;
+        p.y += p.vy * dt;
+        p.onGround = false;
+
+        for (const s of nearbySolids) {
+          if (this.aabb(p, s)) {
+            if (p.vy > 0) {
+              p.y = s.y - p.h;
+              p.vy = 0;
+              p.onGround = true;
+            } else if (p.vy < 0) {
+              p.y = s.y + s.h;
+              p.vy = 0;
+              this.hitBlockFromBelow(s);
+            }
+          }
+        }
+
+        // 移動平台站立判定
+        for (const pl of this.level.platforms) {
+          if (p.vy >= 0 &&
+              p.x + p.w > pl.x + 2 && p.x < pl.x + pl.w - 2 &&
+              prevBottom <= pl.y + 10 && p.y + p.h >= pl.y) {
+            p.y = pl.y - p.h;
+            p.vy = 0;
+            p.onGround = true;
+            p.x += pl.dx;
+            p.y += pl.dy;
+          }
+        }
+
+        // 跑步動畫
+        if (p.onGround && Math.abs(p.vx) > 20) {
+          p.animFrame += dt * (Math.abs(p.vx) / 22);
+        }
+
+        // 掉入深坑 / 岩漿死亡
+        if (p.y > VIEW_H + 40) {
+          sfx.hurt();
+          this.killPlayer(
+            this.levelNum === 1 ? '你掉進無底深坑了！' : '你墜入滾燙的煉獄岩漿了！',
+            this.levelNum === 1 ? '🕳️' : '🌋',
+            0.75
+          );
+        }
+      }
+
+      getNearbySolids(x, w) {
+        const minX = x - 120;
+        const maxX = x + w + 120;
+        return this.level.solids.filter(s => s.x + s.w >= minX && s.x <= maxX);
+      }
+
+      aabb(a, b) {
+        return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
+      }
+
+      hitBlockFromBelow(s) {
+        if (s.type === 'qblock' && !s.used) {
+          s.used = true;
+          s.bumpY = -10;
+          if (s.content === 'coin') {
+            this.coinsCount++;
+            sfx.coin();
+            this.spawnParticles(s.x + s.w / 2, s.y - 10, '#facc15', 8, 160);
+          } else if (s.content === 'mushroom') {
+            sfx.powerup();
+            this.items.push({ x: s.x + 4, y: s.y - 34, w: 32, h: 32, vx: 95, vy: -120, type: 'mushroom' });
+          } else if (s.content === 'star') {
+            sfx.powerup();
+            this.items.push({ x: s.x + 4, y: s.y - 34, w: 32, h: 32, vx: 130, vy: -260, type: 'star' });
+          }
+        } else if (s.type === 'brick') {
+          s.bumpY = -8;
+          sfx.bump();
+        } else if (s.type === 'bossblock' && s.cooldown <= 0 && this.boss && this.boss.hp > 0) {
+          // 觸發落雷攻擊魔王！
+          s.bumpY = -10;
+          s.cooldown = 7.5;
+          this.damageBoss(2, true);
+        } else {
+          sfx.bump();
+        }
+      }
+
+      updateBlocks(dt) {
+        for (const s of this.level.solids) {
+          if (s.bumpY < 0) s.bumpY = Math.min(0, s.bumpY + 60 * dt);
+          if (s.cooldown > 0) s.cooldown = Math.max(0, s.cooldown - dt);
+        }
+      }
+
+      updatePlatforms(dt) {
+        for (const pl of this.level.platforms) {
+          const oldX = pl.x, oldY = pl.y;
+          pl.t += pl.speed * dt;
+          const factor = (Math.sin(pl.t) + 1) / 2;
+          pl.x = pl.startX + (pl.endX - pl.startX) * factor;
+          pl.y = pl.startY + (pl.endY - pl.startY) * factor;
+          pl.dx = pl.x - oldX;
+          pl.dy = pl.y - oldY;
+        }
+      }
+
+      updateItems(dt) {
+        for (let i = this.items.length - 1; i >= 0; i--) {
+          const it = this.items[i];
+          it.vy += 1200 * dt;
+          it.x += it.vx * dt;
+          const nearby = this.getNearbySolids(it.x, it.w);
+          for (const s of nearby) {
+            if (this.aabb(it, s)) {
+              it.vx *= -1;
+              it.x += it.vx * dt * 2;
+            }
+          }
+          it.y += it.vy * dt;
+          for (const s of nearby) {
+            if (this.aabb(it, s) && it.vy > 0) {
+              it.y = s.y - it.h;
+              it.vy = it.type === 'star' ? -360 : 0;
+            }
+          }
+          if (this.aabb(this.player, it)) {
+            if (it.type === 'mushroom') {
+              sfx.powerup();
+              if (!this.player.big) {
+                this.player.big = true;
+                this.player.y -= 12;
+                this.player.h = 54;
+              }
+              this.showToast('🍄 獲得超級蘑菇！（可抵擋一次傷害）');
+            } else if (it.type === 'star') {
+              sfx.powerup();
+              this.player.starTimer = 10.0;
+              this.showToast('⭐ 獲得無敵星星！10 秒無敵！');
+            }
+            this.items.splice(i, 1);
+          } else if (it.y > VIEW_H + 100) {
+            this.items.splice(i, 1);
+          }
+        }
+      }
+
+      updateCoins() {
+        const p = this.player;
+        for (const c of this.level.coins) {
+          if (c.collected) continue;
+          if (Math.abs(c.x - (p.x + p.w / 2)) < 26 && Math.abs(c.y - (p.y + p.h / 2)) < 32) {
+            c.collected = true;
+            this.coinsCount++;
+            sfx.coin();
+            this.spawnParticles(c.x, c.y, '#fde047', 6, 120);
+          }
+        }
+      }
+
+      updateCheckpoints() {
+        const p = this.player;
+        for (const cp of this.level.checkpoints) {
+          if (!cp.activated && p.x + p.w >= cp.x) {
+            cp.activated = true;
+            this.lastCheckpoint = { x: cp.x, y: GROUND_Y - 56 };
+            sfx.checkpoint();
+            this.spawnParticles(cp.x + 10, cp.y - 60, '#34d399', 18, 200);
+            this.showToast(`🚩 已啟用第 ${cp.index} 號存檔點！`);
+          }
+        }
+      }
+
+      hurtPlayer(reason, icon = '💥') {
+        const p = this.player;
+        if (p.invincibleTimer > 0 || p.starTimer > 0) return;
+        if (p.big) {
+          p.big = false;
+          p.h = 42;
+          p.y += 12;
+          p.invincibleTimer = 1.8;
+          sfx.hurt();
+          this.triggerShake(0.2, 6);
+          this.spawnParticles(p.x + p.w / 2, p.y + p.h / 2, '#f87171', 12, 180);
+        } else {
+          sfx.hurt();
+          this.triggerShake(0.3, 9);
+          this.spawnParticles(p.x + p.w / 2, p.y + p.h / 2, '#ef4444', 18, 220);
+          this.killPlayer(reason, icon, 0.85);
+        }
+      }
+
+      updateEnemies(dt) {
+        const p = this.player;
+        for (const e of this.level.enemies) {
+          if (!e.alive) continue;
+          // 僅更新攝影機附近敵人，節省效能
+          if (Math.abs(e.x - this.cameraX - VIEW_W / 2) > VIEW_W * 0.9) continue;
+
+          e.animT += dt * 6;
+          e.vy = Math.min(800, e.vy + 1500 * dt);
+          e.x += e.vx * dt;
+
+          const nearby = this.getNearbySolids(e.x, e.w);
+          for (const s of nearby) {
+            if (this.aabb(e, s)) {
+              if (e.vx > 0) e.x = s.x - e.w;
+              else e.x = s.x + s.w;
+              e.vx *= -1;
+            }
+          }
+
+          e.y += e.vy * dt;
+          for (const s of nearby) {
+            if (this.aabb(e, s) && e.vy > 0) {
+              e.y = s.y - e.h;
+              e.vy = 0;
+            }
+          }
+          if (e.y > VIEW_H + 80) { e.alive = false; continue; }
+
+          // 旋轉龜殼撞擊其他敵人
+          if (e.state === 'spin') {
+            for (const other of this.level.enemies) {
+              if (other !== e && other.alive && this.aabb(e, other)) {
+                other.alive = false;
+                sfx.stomp();
+                this.spawnParticles(other.x + 17, other.y + 17, '#f97316', 10, 180);
+              }
+            }
+          }
+
+          // 與玩家碰撞
+          if (this.aabb(p, e)) {
+            if (p.starTimer > 0) {
+              e.alive = false;
+              sfx.stomp();
+              this.spawnParticles(e.x + 17, e.y + 17, '#fde047', 12, 220);
+              continue;
+            }
+            const stomping = p.vy > 0 && (p.y + p.h - p.vy * dt) <= e.y + 16;
+            if (stomping) {
+              p.vy = -420;
+              sfx.stomp();
+              if (e.type === 'koopa' && e.state === 'walk') {
+                e.state = 'shell';
+                e.vx = 0;
+                e.h = 26;
+                e.y += 8;
+              } else if (e.state === 'shell') {
+                e.state = 'spin';
+                e.vx = p.x < e.x ? 340 : -340;
+              } else {
+                e.alive = false;
+                this.spawnParticles(e.x + 17, e.y + 17, '#a16207', 10, 160);
+              }
+            } else if (e.state === 'shell') {
+              // 踢動靜止龜殼
+              e.state = 'spin';
+              e.vx = p.x < e.x ? 340 : -340;
+              e.x += Math.sign(e.vx) * 14;
+              sfx.stomp();
+            } else {
+              this.hurtPlayer('你被怪物撞倒了！', '👾');
+            }
+          }
+        }
+      }
+
+      updateHazards(dt) {
+        const p = this.player;
+        const pcx = p.x + p.w / 2;
+        const pcy = p.y + p.h / 2;
+
+        // 旋轉火棒
+        for (const fb of this.level.firebars) {
+          fb.angle += fb.speed * dt;
+          if (Math.abs(fb.cx - pcx) > 300) continue;
+          for (let i = 1; i <= fb.count; i++) {
+            const fx = fb.cx + Math.cos(fb.angle) * (i * fb.spacing);
+            const fy = fb.cy + Math.sin(fb.angle) * (i * fb.spacing);
+            if (Math.hypot(fx - pcx, fy - pcy) < 20) {
+              this.hurtPlayer('你被城堡的旋轉火棒燒焦了！', '🔥');
+            }
+          }
+        }
+
+        // 岩漿火球
+        for (const lb of this.level.lavaBalls) {
+          if (Math.abs(lb.x - pcx) > VIEW_W) continue;
+          if (!lb.active) {
+            lb.waitTimer -= dt;
+            if (lb.waitTimer <= 0) {
+              lb.active = true;
+              lb.y = lb.baseY;
+              lb.vy = -660;
+            }
+          } else {
+            lb.vy += 1100 * dt;
+            lb.y += lb.vy * dt;
+            if (Math.hypot(lb.x - pcx, lb.y - pcy) < 22) {
+              this.hurtPlayer('你被噴發的岩漿火球擊中了！', '🌋');
+            }
+            if (lb.y > lb.baseY + 20) {
+              lb.active = false;
+              lb.waitTimer = 1.6;
+            }
+          }
+        }
+      }
+
+      /* -----------------------------------------------------------------------
+         第二關最終魔王戰：煉獄魔龍王（18 HP、三階段、機關落雷 + 暈眩弱點踩踏）
+         ----------------------------------------------------------------------- */
+      updateBoss(dt) {
+        const arena = this.level.bossArena;
+        if (!arena || arena.defeated) return;
+
+        // 觸發鎖門進入魔王戰
+        if (!arena.locked && this.player.x >= arena.triggerX) {
+          arena.locked = true;
+          this.level.solids.push({
+            x: arena.gateTileX * TILE,
+            y: GROUND_Y - 14 * TILE,
+            w: TILE,
+            h: 14 * TILE,
+            type: 'gate',
+            bumpY: 0,
+            cooldown: 0
+          });
+          this.boss = {
+            x: arena.rightX - 170,
+            y: GROUND_Y - 108,
+            w: 96,
+            h: 108,
+            vx: -90,
+            vy: 0,
+            hp: 18,
+            maxHp: 18,
+            facing: -1,
+            aiState: 'patrol', // 'patrol', 'fire', 'leap', 'charge', 'stunned'
+            aiTimer: 2.2,
+            hurtFlash: 0,
+            onGround: true
+          };
+          sfx.bossRoar();
+          this.triggerShake(0.5, 10);
+          document.getElementById('boss-hud').classList.remove('hidden');
+          this.showToast('🔥 煉獄魔龍王現身！大門已封鎖！');
+          this.updateBossHUD();
+        }
+
+        if (!this.boss) return;
+        const b = this.boss;
+        const p = this.player;
+        if (b.hurtFlash > 0) b.hurtFlash -= dt;
+
+        // 判定階段（1: 18-13, 2: 12-7, 3: 6-1）
+        const phase = b.hp > 12 ? 1 : (b.hp > 6 ? 2 : 3);
+        const spdMult = phase === 1 ? 1.0 : (phase === 2 ? 1.25 : 1.52);
+
+        b.aiTimer -= dt;
+        b.vy += 1450 * dt;
+
+        if (b.aiState === 'patrol') {
+          b.facing = p.x < b.x ? -1 : 1;
+          b.vx = b.facing * 85 * spdMult;
+          if (b.aiTimer <= 0) {
+            const roll = Math.random();
+            if (roll < 0.42) {
+              b.aiState = 'fire';
+              b.aiTimer = 1.2;
+              b.vx = 0;
+              this.bossShootFire(phase);
+            } else if (roll < 0.72) {
+              b.aiState = 'leap';
+              b.vy = -580;
+              b.vx = b.facing * 170 * spdMult;
+              b.aiTimer = 1.6;
+              sfx.bossRoar();
+            } else {
+              b.aiState = 'charge';
+              b.vx = b.facing * 290 * spdMult;
+              b.aiTimer = 1.3;
+              sfx.bossRoar();
+            }
+          }
+        } else if (b.aiState === 'fire') {
+          b.vx = 0;
+          if (b.aiTimer <= 0) {
+            b.aiState = 'patrol';
+            b.aiTimer = 1.7 / spdMult;
+          }
+        } else if (b.aiState === 'leap') {
+          if (b.onGround && b.aiTimer < 1.3) {
+            // 震地衝擊波 + 進入暈眩弱點期！
+            this.triggerShake(0.35, 10);
+            this.spawnParticles(b.x + b.w / 2, GROUND_Y, '#f97316', 18, 260);
+            // 釋放左右貼地火焰
+            this.fireballs.push({ x: b.x, y: GROUND_Y - 18, vx: -250 * spdMult, vy: 0, r: 13 });
+            this.fireballs.push({ x: b.x + b.w, y: GROUND_Y - 18, vx: 250 * spdMult, vy: 0, r: 13 });
+            b.aiState = 'stunned';
+            b.aiTimer = 2.6;
+            b.vx = 0;
+          }
+        } else if (b.aiState === 'charge') {
+          if (b.x <= arena.leftX + 12 || b.x + b.w >= arena.rightX - 12 || b.aiTimer <= 0) {
+            // 撞牆暈眩！露出頭頂踩踏弱點！
+            this.triggerShake(0.3, 9);
+            b.aiState = 'stunned';
+            b.aiTimer = 2.8;
+            b.vx = 0;
+          }
+        } else if (b.aiState === 'stunned') {
+          b.vx = 0;
+          if (b.aiTimer <= 0) {
+            b.aiState = 'patrol';
+            b.aiTimer = 1.5;
+          }
+        }
+
+        // 魔王位移與邊界限制
+        b.x += b.vx * dt;
+        if (b.x < arena.leftX + 8) b.x = arena.leftX + 8;
+        if (b.x + b.w > arena.rightX - 8) b.x = arena.rightX - 8 - b.w;
+
+        b.y += b.vy * dt;
+        b.onGround = false;
+        if (b.y + b.h >= GROUND_Y) {
+          b.y = GROUND_Y - b.h;
+          b.vy = 0;
+          b.onGround = true;
+        }
+
+        // 魔王與玩家碰撞（暈眩時可踩踏頭頂造成 2 點傷害！）
+        if (this.aabb(p, b)) {
+          const stomping = p.vy > 0 && (p.y + p.h - p.vy * dt) <= b.y + 30;
+          if (stomping && b.aiState === 'stunned') {
+            p.vy = -520;
+            p.vx = p.x < b.x + b.w / 2 ? -220 : 220;
+            this.damageBoss(2, false);
+            b.aiState = 'patrol';
+            b.aiTimer = 1.4;
+          } else {
+            this.hurtPlayer('你被煉獄魔龍王擊倒了！', '🐉');
+          }
+        }
+
+        // 更新魔王火球
+        for (let i = this.fireballs.length - 1; i >= 0; i--) {
+          const f = this.fireballs[i];
+          f.x += f.vx * dt;
+          f.y += f.vy * dt;
+          if (Math.hypot(f.x - (p.x + p.w / 2), f.y - (p.y + p.h / 2)) < f.r + 14) {
+            this.fireballs.splice(i, 1);
+            this.hurtPlayer('你被魔王的煉獄火球擊中了！', '🔥');
+            continue;
+          }
+          if (f.x < arena.leftX - 50 || f.x > arena.rightX + 50 || f.y > VIEW_H + 50) {
+            this.fireballs.splice(i, 1);
+          }
+        }
+
+        // 更新落雷視覺特效
+        for (let i = this.lightnings.length - 1; i >= 0; i--) {
+          this.lightnings[i].life -= dt;
+          if (this.lightnings[i].life <= 0) this.lightnings.splice(i, 1);
+        }
+      }
+
+      bossShootFire(phase) {
+        const b = this.boss;
+        const p = this.player;
+        const dir = p.x < b.x ? -1 : 1;
+        const sx = dir < 0 ? b.x : b.x + b.w;
+        const sy = b.y + 34;
+        sfx.fireball();
+        if (phase === 1) {
+          this.fireballs.push({ x: sx, y: sy, vx: dir * 270, vy: 0, r: 12 });
+        } else if (phase === 2) {
+          [-65, 0, 65].forEach(vy => {
+            this.fireballs.push({ x: sx, y: sy, vx: dir * 290, vy, r: 12 });
+          });
+        } else {
+          [-110, -40, 30, 100].forEach(vy => {
+            this.fireballs.push({ x: sx, y: sy, vx: dir * 330, vy, r: 13 });
+          });
+        }
+      }
+
+      damageBoss(amount, isLightning) {
+        if (!this.boss || this.boss.hp <= 0) return;
+        this.boss.hp = Math.max(0, this.boss.hp - amount);
+        this.boss.hurtFlash = 0.35;
+        sfx.bossHit();
+        this.triggerShake(0.3, 10);
+        if (isLightning) {
+          this.lightnings.push({ x: this.boss.x + this.boss.w / 2, life: 0.35 });
+          this.spawnParticles(this.boss.x + this.boss.w / 2, this.boss.y + 30, '#38bdf8', 22, 280);
+        } else {
+          this.spawnParticles(this.boss.x + this.boss.w / 2, this.boss.y + 10, '#facc15', 22, 260);
+        }
+        this.updateBossHUD();
+
+        if (this.boss.hp <= 0) {
+          this.level.bossArena.defeated = true;
+          this.fireballs = [];
+          this.spawnParticles(this.boss.x + this.boss.w / 2, this.boss.y + 50, '#f97316', 50, 360);
+          this.spawnParticles(this.boss.x + this.boss.w / 2, this.boss.y + 50, '#fde047', 40, 320);
+          this.boss = null;
+          setTimeout(() => {
+            if (this.state === 'playing') this.triggerVictory();
+          }, 900);
+        }
+      }
+
+      updateBossHUD() {
+        if (!this.boss) return;
+        const b = this.boss;
+        const pct = Math.max(0, (b.hp / b.maxHp) * 100);
+        document.getElementById('boss-hp-fill').style.width = pct + '%';
+        const phaseTxt = b.hp > 12 ? '第一階段' : (b.hp > 6 ? '第二階段・狂暴' : '第三階段・煉獄覺醒');
+        document.getElementById('boss-phase-text').textContent = `${phaseTxt} (${b.hp}/${b.maxHp})`;
+      }
+
+      updateParticles(dt) {
+        for (let i = this.particles.length - 1; i >= 0; i--) {
+          const pt = this.particles[i];
+          pt.vy += 900 * dt;
+          pt.x += pt.vx * dt;
+          pt.y += pt.vy * dt;
+          pt.life -= dt;
+          if (pt.life <= 0) this.particles.splice(i, 1);
+        }
+      }
+
+      updateHUD() {
+        document.getElementById('hud-time').textContent = this.formatTime(this.elapsedTime);
+        document.getElementById('hud-coins').textContent = this.coinsCount;
+
+        const prog = Math.max(0, Math.min(100, Math.floor((this.player.x / this.level.goalX) * 100)));
+        document.getElementById('hud-progress-fill').style.width = prog + '%';
+        document.getElementById('hud-progress-text').textContent = prog + '%';
+
+        const pwrEl = document.getElementById('hud-power');
+        if (this.player.starTimer > 0) {
+          pwrEl.textContent = `⭐ 無敵 ${this.player.starTimer.toFixed(0)}s`;
+          pwrEl.className = 'hidden sm:flex items-center gap-1 px-2 py-0.5 rounded-md bg-yellow-950 border border-yellow-400 text-xs font-bold text-yellow-300';
+        } else if (this.player.big) {
+          pwrEl.textContent = '🍄 超級瑪利歐';
+          pwrEl.className = 'hidden sm:flex items-center gap-1 px-2 py-0.5 rounded-md bg-emerald-950 border border-emerald-500 text-xs font-bold text-emerald-300';
+        } else {
+          pwrEl.textContent = '狀態：普通';
+          pwrEl.className = 'hidden sm:flex items-center gap-1 px-2 py-0.5 rounded-md bg-slate-800 border border-slate-600 text-xs font-bold text-slate-300';
+        }
+
+        // 原地停留 HUD
+        const idleTxt = document.getElementById('hud-idle-text');
+        const idleBox = document.getElementById('hud-idle-box');
+        if (this.idleTimer > 5) {
+          idleTxt.textContent = `${Math.max(0, 30 - this.idleTimer).toFixed(0)}s`;
+          idleTxt.className = 'font-bold text-amber-300';
+          idleBox.className = 'flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-amber-950/90 border border-amber-500 text-xs';
+        } else {
+          idleTxt.textContent = '安全';
+          idleTxt.className = 'font-bold text-emerald-300';
+          idleBox.className = 'flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-800/90 border border-slate-600 text-xs';
+        }
+
+        // 死神 HUD
+        const reaperTxt = document.getElementById('hud-reaper-text');
+        const reaperBox = document.getElementById('hud-reaper-box');
+        if (this.reaperState === 'warning') {
+          reaperTxt.textContent = '即將降臨!';
+          reaperTxt.className = 'font-bold text-red-300 animate-pulse';
+          reaperBox.className = 'flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-red-950 border border-red-500 text-xs';
+        } else if (this.reaperState === 'active') {
+          reaperTxt.textContent = `在背後 ${Math.max(0, this.reaperTimer).toFixed(0)}s`;
+          reaperTxt.className = 'font-bold text-white';
+          reaperBox.className = 'flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-red-700 border border-red-300 text-xs';
+        } else {
+          reaperTxt.textContent = '潛伏中';
+          reaperTxt.className = 'font-bold text-slate-300';
+          reaperBox.className = 'flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-800/90 border border-slate-600 text-xs';
+        }
+      }
+
+      /* =========================================================================
+         4. 精緻像素風 Canvas 渲染器
+         ========================================================================= */
+      render() {
+        const ctx = this.ctx;
+        const isL1 = this.levelNum === 1;
+
+        ctx.save();
+        // 畫面震動位移
+        if (this.shakeTimer > 0) {
+          const sx = (Math.random() - 0.5) * this.shakeIntensity * 2;
+          const sy = (Math.random() - 0.5) * this.shakeIntensity * 2;
+          ctx.translate(sx, sy);
+        }
+
+        // 1. 背景漸層
+        const bgGrad = ctx.createLinearGradient(0, 0, 0, VIEW_H);
+        if (isL1) {
+          bgGrad.addColorStop(0, '#38bdf8');
+          bgGrad.addColorStop(0.65, '#7dd3fc');
+          bgGrad.addColorStop(1, '#bae6fd');
+        } else {
+          bgGrad.addColorStop(0, '#0f0714');
+          bgGrad.addColorStop(0.65, '#240b18');
+          bgGrad.addColorStop(1, '#450a0a');
+        }
+        ctx.fillStyle = bgGrad;
+        ctx.fillRect(0, 0, VIEW_W, VIEW_H);
+
+        // 2. 視差背景裝飾
+        for (const d of this.level.decor) {
+          const px = d.x - this.cameraX * 0.35;
+          if (px < -180 || px > VIEW_W + 180) continue;
+          if (d.type === 'cloud') {
+            ctx.fillStyle = 'rgba(255,255,255,0.88)';
+            ctx.beginPath();
+            ctx.arc(px, d.y, 24 * d.scale, 0, Math.PI * 2);
+            ctx.arc(px + 24 * d.scale, d.y - 8 * d.scale, 28 * d.scale, 0, Math.PI * 2);
+            ctx.arc(px + 50 * d.scale, d.y, 22 * d.scale, 0, Math.PI * 2);
+            ctx.fill();
+          } else if (d.type === 'hill') {
+            ctx.fillStyle = '#15803d';
+            ctx.beginPath();
+            ctx.arc(px, GROUND_Y, 95 * d.scale, Math.PI, 0);
+            ctx.fill();
+            ctx.fillStyle = '#16a34a';
+            ctx.beginPath();
+            ctx.arc(px - 10, GROUND_Y, 75 * d.scale, Math.PI, 0);
+            ctx.fill();
+          } else if (d.type === 'window') {
+            // 暗黑城堡哥德窗
+            ctx.fillStyle = '#3b0764';
+            ctx.fillRect(px, d.y, 34, 60);
+            ctx.beginPath();
+            ctx.arc(px + 17, d.y, 17, Math.PI, 0);
+            ctx.fill();
+            ctx.fillStyle = 'rgba(239,68,68,0.35)';
+            ctx.fillRect(px + 6, d.y + 4, 22, 50);
+          }
+        }
+
+        // 第二關底部滾燙岩漿海
+        if (!isL1) {
+          const lavaY = VIEW_H - 28;
+          ctx.fillStyle = '#dc2626';
+          ctx.fillRect(0, lavaY, VIEW_W, 40);
+          ctx.fillStyle = '#f97316';
+          for (let x = 0; x < VIEW_W; x += 32) {
+            const wave = Math.sin(this.elapsedTime * 5 + x * 0.05) * 4;
+            ctx.fillRect(x, lavaY + wave, 26, 8);
+          }
+        }
+
+        // 切換到世界座標
+        ctx.save();
+        ctx.translate(-Math.floor(this.cameraX), 0);
+
+        // 3. 繪製方塊與地形
+        const minVis = this.cameraX - 80;
+        const maxVis = this.cameraX + VIEW_W + 80;
+        for (const s of this.level.solids) {
+          if (s.x + s.w < minVis || s.x > maxVis) continue;
+          this.drawSolid(ctx, s);
+        }
+
+        // 4. 繪製移動平台
+        for (const pl of this.level.platforms) {
+          if (pl.x + pl.w < minVis || pl.x > maxVis) continue;
+          ctx.fillStyle = isL1 ? '#d97706' : '#475569';
+          ctx.fillRect(pl.x, pl.y, pl.w, pl.h);
+          ctx.fillStyle = isL1 ? '#fbbf24' : '#94a3b8';
+          ctx.fillRect(pl.x, pl.y, pl.w, 6);
+          ctx.strokeStyle = '#0f172a';
+          ctx.lineWidth = 2;
+          ctx.strokeRect(pl.x, pl.y, pl.w, pl.h);
+        }
+
+        // 5. 繪製存檔點旗幟
+        for (const cp of this.level.checkpoints) {
+          if (cp.x < minVis || cp.x > maxVis) continue;
+          ctx.fillStyle = '#cbd5e1';
+          ctx.fillRect(cp.x, cp.y - 84, 6, 84);
+          ctx.fillStyle = cp.activated ? '#10b981' : '#ef4444';
+          ctx.beginPath();
+          ctx.moveTo(cp.x + 6, cp.y - 82);
+          ctx.lineTo(cp.x + 44, cp.y - 68);
+          ctx.lineTo(cp.x + 6, cp.y - 54);
+          ctx.fill();
+          ctx.fillStyle = '#fff';
+          ctx.font = 'bold 11px "Noto Sans TC"';
+          ctx.fillText(cp.activated ? '已存檔' : '存檔點', cp.x - 10, cp.y - 90);
+        }
+
+        // 6. 第一關終點旗桿與城堡
+        if (isL1) {
+          const gx = this.level.goalX;
+          if (gx > minVis - 200 && gx < maxVis + 200) {
+            ctx.fillStyle = '#e2e8f0';
+            ctx.fillRect(gx, GROUND_Y - 260, 8, 260);
+            ctx.fillStyle = '#facc15';
+            ctx.beginPath();
+            ctx.arc(gx + 4, GROUND_Y - 264, 10, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.fillStyle = '#22c55e';
+            ctx.beginPath();
+            ctx.moveTo(gx + 8, GROUND_Y - 252);
+            ctx.lineTo(gx + 60, GROUND_Y - 232);
+            ctx.lineTo(gx + 8, GROUND_Y - 212);
+            ctx.fill();
+            // 城堡
+            const cx = gx + 120;
+            ctx.fillStyle = '#b45309';
+            ctx.fillRect(cx, GROUND_Y - 140, 140, 140);
+            ctx.fillRect(cx + 25, GROUND_Y - 190, 90, 50);
+            ctx.fillStyle = '#1e293b';
+            ctx.beginPath();
+            ctx.arc(cx + 70, GROUND_Y, 28, Math.PI, 0);
+            ctx.fill();
+          }
+        }
+
+        // 7. 繪製空中金幣
+        const coinSpin = Math.abs(Math.cos(this.elapsedTime * 5));
+        for (const c of this.level.coins) {
+          if (c.collected || c.x < minVis || c.x > maxVis) continue;
+          ctx.fillStyle = '#facc15';
+          ctx.beginPath();
+          ctx.ellipse(c.x, c.y, Math.max(3, c.r * coinSpin), c.r, 0, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.strokeStyle = '#a16207';
+          ctx.lineWidth = 2;
+          ctx.stroke();
+        }
+
+        // 8. 繪製道具（蘑菇 / 無敵星）
+        for (const it of this.items) {
+          if (it.type === 'mushroom') {
+            ctx.fillStyle = '#fef3c7';
+            ctx.fillRect(it.x + 7, it.y + 16, 18, 16);
+            ctx.fillStyle = '#ef4444';
+            ctx.beginPath();
+            ctx.arc(it.x + 16, it.y + 16, 16, Math.PI, 0);
+            ctx.fill();
+            ctx.fillStyle = '#fff';
+            ctx.beginPath();
+            ctx.arc(it.x + 10, it.y + 9, 4, 0, Math.PI * 2);
+            ctx.arc(it.x + 22, it.y + 9, 4, 0, Math.PI * 2);
+            ctx.fill();
+          } else {
+            ctx.fillStyle = Math.floor(this.elapsedTime * 15) % 2 ? '#fde047' : '#f59e0b';
+            ctx.beginPath();
+            ctx.arc(it.x + 16, it.y + 16, 14, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.fillStyle = '#000';
+            ctx.fillRect(it.x + 11, it.y + 11, 3, 6);
+            ctx.fillRect(it.x + 18, it.y + 11, 3, 6);
+          }
+        }
+
+        // 9. 繪製敵人
+        for (const e of this.level.enemies) {
+          if (!e.alive || e.x < minVis || e.x > maxVis) continue;
+          this.drawEnemy(ctx, e);
+        }
+
+        // 10. 繪製旋轉火棒與岩漿火球
+        for (const fb of this.level.firebars) {
+          if (fb.cx < minVis - 150 || fb.cx > maxVis + 150) continue;
+          for (let i = 1; i <= fb.count; i++) {
+            const fx = fb.cx + Math.cos(fb.angle) * (i * fb.spacing);
+            const fy = fb.cy + Math.sin(fb.angle) * (i * fb.spacing);
+            ctx.fillStyle = '#f97316';
+            ctx.beginPath();
+            ctx.arc(fx, fy, 9, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.fillStyle = '#fef08a';
+            ctx.beginPath();
+            ctx.arc(fx, fy, 4, 0, Math.PI * 2);
+            ctx.fill();
+          }
+        }
+        for (const lb of this.level.lavaBalls) {
+          if (!lb.active || lb.x < minVis || lb.x > maxVis) continue;
+          ctx.fillStyle = '#ef4444';
+          ctx.beginPath();
+          ctx.arc(lb.x, lb.y, 13, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.fillStyle = '#fef08a';
+          ctx.beginPath();
+          ctx.arc(lb.x, lb.y, 6, 0, Math.PI * 2);
+          ctx.fill();
+        }
+
+        // 11. 繪製魔王與魔王火球與落雷
+        if (this.boss) this.drawBoss(ctx, this.boss);
+        for (const f of this.fireballs) {
+          ctx.fillStyle = '#ef4444';
+          ctx.beginPath();
+          ctx.arc(f.x, f.y, f.r, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.fillStyle = '#fef08a';
+          ctx.beginPath();
+          ctx.arc(f.x, f.y, f.r * 0.5, 0, Math.PI * 2);
+          ctx.fill();
+        }
+        for (const l of this.lightnings) {
+          ctx.strokeStyle = '#7dd3fc';
+          ctx.lineWidth = 8;
+          ctx.beginPath();
+          ctx.moveTo(l.x, 0);
+          ctx.lineTo(l.x - 18, 160);
+          ctx.lineTo(l.x + 20, 300);
+          ctx.lineTo(l.x, GROUND_Y);
+          ctx.stroke();
+          ctx.strokeStyle = '#ffffff';
+          ctx.lineWidth = 3;
+          ctx.stroke();
+        }
+
+        // 12. 最後 5 秒原地停留：玩家頭頂/腳下巨大棺材陰影
+        if (this.idleTimer >= 25 && this.state === 'playing') {
+          const factor = Math.min(1, (this.idleTimer - 25) / 5);
+          ctx.fillStyle = `rgba(0, 0, 0, ${0.28 + factor * 0.52})`;
+          ctx.beginPath();
+          ctx.ellipse(
+            this.player.x + this.player.w / 2,
+            this.player.y + this.player.h,
+            24 + factor * 46,
+            8 + factor * 10,
+            0, 0, Math.PI * 2
+          );
+          ctx.fill();
+        }
+
+        // 13. 繪製死神（追擊中或剛斬擊）
+        if (this.reaperVisual.alpha > 0.02 || this.reaperVisual.slashTimer > 0) {
+          this.drawReaper(ctx);
+        }
+
+        // 14. 繪製玩家（瑪利歐風格）
+        this.drawPlayer(ctx, this.player);
+
+        // 15. 繪製天降棺材
+        if (this.coffin) {
+          this.drawCoffin(ctx, this.coffin);
+        }
+
+        // 16. 繪製粒子
+        for (const pt of this.particles) {
+          ctx.globalAlpha = Math.max(0, pt.life / pt.maxLife);
+          ctx.fillStyle = pt.color;
+          ctx.fillRect(pt.x, pt.y, pt.size, pt.size);
+        }
+        ctx.globalAlpha = 1;
+
+        ctx.restore(); // 結束世界座標
+        ctx.restore(); // 結束震動
+      }
+
+      drawSolid(ctx, s) {
+        const y = s.y + (s.bumpY || 0);
+        if (s.type === 'ground') {
+          ctx.fillStyle = '#92400e';
+          ctx.fillRect(s.x, y, s.w, s.h);
+          ctx.fillStyle = '#16a34a';
+          ctx.fillRect(s.x, y, s.w, 12);
+          ctx.fillStyle = '#22c55e';
+          ctx.fillRect(s.x, y, s.w, 5);
+        } else if (s.type === 'castle_ground') {
+          ctx.fillStyle = '#334155';
+          ctx.fillRect(s.x, y, s.w, s.h);
+          ctx.fillStyle = '#64748b';
+          ctx.fillRect(s.x, y, s.w, 8);
+          ctx.strokeStyle = '#1e293b';
+          ctx.lineWidth = 2;
+          for (let gx = s.x; gx < s.x + s.w; gx += TILE) {
+            ctx.strokeRect(gx, y, TILE, TILE);
+          }
+        } else if (s.type === 'brick') {
+          ctx.fillStyle = this.levelNum === 1 ? '#b45309' : '#475569';
+          ctx.fillRect(s.x, y, s.w, s.h);
+          ctx.strokeStyle = '#1e293b';
+          ctx.lineWidth = 2;
+          ctx.strokeRect(s.x, y, s.w, s.h);
+          ctx.beginPath();
+          ctx.moveTo(s.x, y + s.h / 2);
+          ctx.lineTo(s.x + s.w, y + s.h / 2);
+          ctx.stroke();
+        } else if (s.type === 'qblock') {
+          ctx.fillStyle = s.used ? '#64748b' : '#f59e0b';
+          ctx.fillRect(s.x, y, s.w, s.h);
+          ctx.strokeStyle = '#78350f';
+          ctx.lineWidth = 3;
+          ctx.strokeRect(s.x + 1, y + 1, s.w - 2, s.h - 2);
+          if (!s.used) {
+            ctx.fillStyle = '#fef08a';
+            ctx.font = 'bold 22px "Press Start 2P", monospace';
+            ctx.fillText('?', s.x + 11, y + 29);
+          }
+        } else if (s.type === 'bossblock') {
+          const ready = s.cooldown <= 0;
+          ctx.fillStyle = ready ? '#0284c7' : '#334155';
+          ctx.fillRect(s.x, y, s.w, s.h);
+          ctx.strokeStyle = ready ? '#7dd3fc' : '#475569';
+          ctx.lineWidth = 3;
+          ctx.strokeRect(s.x + 1, y + 1, s.w - 2, s.h - 2);
+          ctx.fillStyle = ready ? '#fef08a' : '#94a3b8';
+          ctx.font = 'bold 20px sans-serif';
+          ctx.fillText('⚡', s.x + 9, y + 28);
+        } else if (s.type === 'pipe') {
+          ctx.fillStyle = '#16a34a';
+          ctx.fillRect(s.x + 4, y + 18, s.w - 8, s.h - 18);
+          ctx.fillStyle = '#22c55e';
+          ctx.fillRect(s.x, y, s.w, 20);
+          ctx.fillStyle = '#86efac';
+          ctx.fillRect(s.x + 8, y + 2, 8, s.h - 4);
+          ctx.strokeStyle = '#052e16';
+          ctx.lineWidth = 2;
+          ctx.strokeRect(s.x, y, s.w, 20);
+          ctx.strokeRect(s.x + 4, y + 20, s.w - 8, s.h - 20);
+        } else if (s.type === 'gate') {
+          ctx.fillStyle = '#1e293b';
+          ctx.fillRect(s.x, y, s.w, s.h);
+          ctx.fillStyle = '#ef4444';
+          for (let gy = y; gy < y + s.h; gy += 36) {
+            ctx.fillRect(s.x + 6, gy + 8, s.w - 12, 8);
+          }
+        } else {
+          ctx.fillStyle = '#52525b';
+          ctx.fillRect(s.x, y, s.w, s.h);
+          ctx.strokeStyle = '#27272a';
+          ctx.lineWidth = 2;
+          ctx.strokeRect(s.x, y, s.w, s.h);
+        }
+      }
+
+      drawPlayer(ctx, p) {
+        if (p.invincibleTimer > 0 && Math.floor(p.invincibleTimer * 18) % 2 === 0) return;
+
+        ctx.save();
+        if (p.squashed) {
+          ctx.translate(p.x, p.y + p.h - 10);
+          ctx.scale(1.4, 0.25);
+        } else {
+          ctx.translate(p.x, p.y);
+        }
+
+        const isStar = p.starTimer > 0;
+        const capColor = isStar ? `hsl(${(this.elapsedTime * 400) % 360}, 95%, 55%)` : '#dc2626';
+        const overallColor = isStar ? '#facc15' : '#2563eb';
+
+        // 雙腳動畫
+        const legOff = p.onGround ? Math.sin(p.animFrame) * 5 : 4;
+        ctx.fillStyle = '#78350f';
+        ctx.fillRect(4 + legOff, p.h - 9, 10, 9);
+        ctx.fillRect(p.w - 14 - legOff, p.h - 9, 10, 9);
+
+        // 藍色吊帶褲身體
+        ctx.fillStyle = overallColor;
+        ctx.fillRect(3, 18, p.w - 6, p.h - 26);
+        // 紅衣袖子
+        ctx.fillStyle = capColor;
+        ctx.fillRect(1, 18, 6, 12);
+        ctx.fillRect(p.w - 7, 18, 6, 12);
+        // 金色鈕扣
+        ctx.fillStyle = '#fde047';
+        ctx.fillRect(8, 22, 4, 4);
+        ctx.fillRect(p.w - 12, 22, 4, 4);
+
+        // 臉部
+        ctx.fillStyle = '#fed7aa';
+        ctx.fillRect(5, 7, p.w - 10, 12);
+        // 眼睛與鬍子（依朝向繪製）
+        ctx.fillStyle = '#0f172a';
+        const eyeX = p.facing > 0 ? p.w - 11 : 8;
+        ctx.fillRect(eyeX, 10, 3, 4);
+        ctx.fillStyle = '#451a03';
+        ctx.fillRect(p.facing > 0 ? p.w - 13 : 5, 15, 9, 3);
+
+        // 經典紅色瑪利歐帽
+        ctx.fillStyle = capColor;
+        ctx.fillRect(3, 1, p.w - 6, 7);
+        ctx.fillRect(p.facing > 0 ? 6 : 0, 5, p.w - 4, 4);
+
+        ctx.restore();
+      }
+
+      drawEnemy(ctx, e) {
+        ctx.save();
+        if (e.type === 'goomba' || e.type === 'guard') {
+          // 蘑菇怪 / 暗黑衛兵
+          ctx.fillStyle = e.type === 'goomba' ? '#92400e' : '#4c1d95';
+          ctx.beginPath();
+          ctx.arc(e.x + e.w / 2, e.y + 15, 16, Math.PI, 0);
+          ctx.lineTo(e.x + e.w, e.y + 24);
+          ctx.lineTo(e.x, e.y + 24);
+          ctx.closePath();
+          ctx.fill();
+          // 腳
+          ctx.fillStyle = '#1e293b';
+          const step = Math.sin(e.animT) * 3;
+          ctx.fillRect(e.x + 4 + step, e.y + 24, 10, 10);
+          ctx.fillRect(e.x + e.w - 14 - step, e.y + 24, 10, 10);
+          // 兇狠眼睛
+          ctx.fillStyle = '#fff';
+          ctx.fillRect(e.x + 8, e.y + 11, 6, 7);
+          ctx.fillRect(e.x + 20, e.y + 11, 6, 7);
+          ctx.fillStyle = e.type === 'guard' ? '#ef4444' : '#000';
+          ctx.fillRect(e.x + 10, e.y + 13, 3, 4);
+          ctx.fillRect(e.x + 21, e.y + 13, 3, 4);
+        } else {
+          // 烏龜怪 / 龜殼
+          ctx.fillStyle = '#15803d';
+          ctx.beginPath();
+          ctx.arc(e.x + e.w / 2, e.y + e.h - 10, 15, Math.PI, 0);
+          ctx.fill();
+          ctx.fillStyle = '#fef08a';
+          ctx.fillRect(e.x + 3, e.y + e.h - 10, e.w - 6, 6);
+          if (e.state === 'walk') {
+            ctx.fillStyle = '#84cc16';
+            ctx.fillRect(e.vx < 0 ? e.x - 4 : e.x + e.w - 8, e.y + 2, 12, 14);
+            ctx.fillStyle = '#000';
+            ctx.fillRect(e.vx < 0 ? e.x - 2 : e.x + e.w - 2, e.y + 5, 3, 4);
+          }
+        }
+        ctx.restore();
+      }
+
+      drawCoffin(ctx, c) {
+        ctx.save();
+        ctx.fillStyle = '#5c3a21';
+        ctx.strokeStyle = '#291509';
+        ctx.lineWidth = 4;
+        // 經典六角形棺材輪廓
+        ctx.beginPath();
+        ctx.moveTo(c.x + 18, c.y);
+        ctx.lineTo(c.x + c.w - 18, c.y);
+        ctx.lineTo(c.x + c.w, c.y + 30);
+        ctx.lineTo(c.x + c.w - 14, c.y + c.h);
+        ctx.lineTo(c.x + 14, c.y + c.h);
+        ctx.lineTo(c.x, c.y + 30);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+        // 金色十字架
+        ctx.fillStyle = '#d97706';
+        ctx.fillRect(c.x + c.w / 2 - 5, c.y + 20, 10, 56);
+        ctx.fillRect(c.x + c.w / 2 - 20, c.y + 34, 40, 10);
+        ctx.restore();
+      }
+
+      drawReaper(ctx) {
+        const r = this.reaperVisual;
+        ctx.save();
+        ctx.globalAlpha = Math.max(r.alpha, r.slashTimer > 0 ? 1 : 0);
+        ctx.translate(r.x, r.y);
+
+        // 黑色漂浮斗篷
+        ctx.fillStyle = '#09090b';
+        ctx.beginPath();
+        ctx.moveTo(26, 0);
+        ctx.lineTo(52, 74);
+        ctx.lineTo(38, 66);
+        ctx.lineTo(26, 78);
+        ctx.lineTo(14, 66);
+        ctx.lineTo(0, 74);
+        ctx.closePath();
+        ctx.fill();
+        ctx.strokeStyle = '#991b1b';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+
+        // 兜帽陰影與血紅雙眼
+        ctx.fillStyle = '#000';
+        ctx.beginPath();
+        ctx.arc(26, 20, 13, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = '#ef4444';
+        ctx.fillRect(21, 18, 4, 4);
+        ctx.fillRect(29, 18, 4, 4);
+
+        // 巨型鐮刀（斬擊時揮下！）
+        ctx.save();
+        ctx.translate(38, 36);
+        const slashRot = r.slashTimer > 0 ? 1.4 : Math.sin(this.elapsedTime * 5) * 0.12;
+        ctx.rotate(slashRot);
+        ctx.fillStyle = '#78350f';
+        ctx.fillRect(-3, -46, 6, 86);
+        ctx.fillStyle = '#e2e8f0';
+        ctx.beginPath();
+        ctx.moveTo(2, -44);
+        ctx.quadraticCurveTo(38, -42, 34, -10);
+        ctx.quadraticCurveTo(22, -28, 2, -28);
+        ctx.closePath();
+        ctx.fill();
+        ctx.restore();
+
+        ctx.restore();
+      }
+
+      drawBoss(ctx, b) {
+        ctx.save();
+        const flash = b.hurtFlash > 0 && Math.floor(b.hurtFlash * 24) % 2 === 0;
+        const enraged = b.hp <= 6;
+
+        // 狂暴光環
+        if (enraged) {
+          ctx.fillStyle = 'rgba(239, 68, 68, 0.25)';
+          ctx.beginPath();
+          ctx.arc(b.x + b.w / 2, b.y + b.h / 2, 76, 0, Math.PI * 2);
+          ctx.fill();
+        }
+
+        // 龜殼與尖刺
+        ctx.fillStyle = flash ? '#ffffff' : (enraged ? '#7f1d1d' : '#14532d');
+        ctx.fillRect(b.x + 12, b.y + 24, b.w - 24, b.h - 32);
+        // 尖刺
+        ctx.fillStyle = '#fef08a';
+        for (let i = 0; i < 3; i++) {
+          ctx.beginPath();
+          ctx.moveTo(b.x + 22 + i * 24, b.y + 24);
+          ctx.lineTo(b.x + 30 + i * 24, b.y + 8);
+          ctx.lineTo(b.x + 38 + i * 24, b.y + 24);
+          ctx.fill();
+        }
+
+        // 巨龍頭與角
+        const headX = b.facing < 0 ? b.x - 16 : b.x + b.w - 34;
+        ctx.fillStyle = flash ? '#fff' : '#166534';
+        ctx.fillRect(headX, b.y + 18, 50, 38);
+        ctx.fillStyle = '#facc15';
+        ctx.fillRect(headX + 6, b.y + 6, 10, 14);
+        ctx.fillRect(headX + 30, b.y + 6, 10, 14);
+        // 紅眼
+        ctx.fillStyle = '#ef4444';
+        ctx.fillRect(b.facing < 0 ? headX + 8 : headX + 32, b.y + 28, 10, 8);
+
+        // 粗壯雙腳
+        ctx.fillStyle = '#15803d';
+        ctx.fillRect(b.x + 16, b.y + b.h - 18, 22, 18);
+        ctx.fillRect(b.x + b.w - 38, b.y + b.h - 18, 22, 18);
+
+        // 暈眩弱點提示！
+        if (b.aiState === 'stunned') {
+          ctx.fillStyle = '#fde047';
+          ctx.font = 'bold 14px "Noto Sans TC"';
+          ctx.textAlign = 'center';
+          ctx.fillText('⭐ 暈眩弱點！快踩踏！ ⭐', b.x + b.w / 2, b.y - 12);
+          ctx.textAlign = 'left';
+        }
+        ctx.restore();
+      }
+    }
+
+    // 啟動遊戲實例
+    window.addEventListener('DOMContentLoaded', () => {
+      new Game();
+    });
+  </script>
+</body>
+</html>
